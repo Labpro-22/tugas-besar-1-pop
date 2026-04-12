@@ -1,6 +1,8 @@
 #ifndef ENUMS_HPP
 #define ENUMS_HPP
 
+const int maxPlayer = 4;
+
 // INI BUAT VARIABELS/ATRIBUT YG SCOPENYA UDAH TAU DAN BIAR BEST PRACTICE. JANGAN DI DEFINE DI HPP MASING2! (pake ini ya enumz)
 enum class PlayerStatus{
     ACTIVE,

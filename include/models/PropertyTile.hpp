@@ -15,7 +15,7 @@ protected:
 public:
     PropertyTile(int index, const std::string& code, const std::string& name,
                  int buyPrice, int mortgageValue);
-    virtual ~PropertyTile() = default;
+    virtual ~PropertyTile();
     void onLanded(Player& player) override;
 
     virtual int calcRent(int diceRoll = 0) const = 0;
@@ -62,8 +62,12 @@ private:
     std::string       colorGroup;
     std::vector<int>  rentTable;  // Indeks sesuai RentLevel
     int houseCost;
+    int rentLevel;
     int hotelCost;
+    int festivalEffectMultiplier  = 1;
     bool isMonopolized = false;
+    bool isFestivalEffectActive = false;
+    bool hasBuilding = false;
 
 };
 
@@ -80,9 +84,10 @@ public:
  
 private:
     map<int, int> rentByCount;  // jumlah railroad -> sewa
+    
 };
 
- 
+
 class UtilityTile : public PropertyTile {
     
 public:

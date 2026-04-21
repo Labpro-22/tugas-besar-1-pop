@@ -23,6 +23,10 @@ public:
     void payRent(); 
     virtual void mortgage(); 
     virtual void unmortgage();  
+    int getmortgageValue() { return mortgageValue;}
+    int getPrice() { return price; }
+    int getOwnerId() { return ownerId; }
+    int getStatus() { return status; }
     virtual void sellTobank(Player& owner);
 };
 
@@ -50,6 +54,7 @@ public:
     bool hasBuildings();
     int getHouseCost();
     int getHotelCost();
+    int getRentLevel();
  
     // Color group
     string getColorGroup() const;
@@ -57,6 +62,10 @@ public:
     /** Hitung nilai jual bangunan saat ini (50% dari total harga beli bangunan) */
     int calcBuildingResaleValue() const;
     void setMonopolized(bool val);
+
+    // efek festival
+    void setFestivalEffect(int multiplier);
+    void clearFestivalEffect();
  
 private:
     std::string       colorGroup;
@@ -80,10 +89,12 @@ public:
 
     int calcRent(int diceRoll = 0) const override;
     void onLanded(Player& player) override;
- 
+    int getRailroadOwnedCount();
+    void setrailroadOwnedCount(int count);
  
 private:
     map<int, int> rentByCount;  // jumlah railroad -> sewa
+    int railroadOwnedCount = 1;
     
 };
 
@@ -99,9 +110,16 @@ public:
     //dikalikan dengan faktor pengali yang bergantung pada jumlah petak Utility yang dimiliki oleh pemiliknya            
     int calcRent(int diceRoll = 0) const override;
     void onLanded(Player& player) override;
+    void setUtilityOwnedCount(int count);
+    void setLastDiceRoll(int dice);
+    int getUtilityOwnedCount();
+    int getLastDiceRoll();
+
  
 private:
     std::map<int, int> multiplierByCount;  // jumlah utility -> faktor pengali
+    int utilityOwnedCount = 1;
+    int lastDiceRoll = 1;
 };
 
 

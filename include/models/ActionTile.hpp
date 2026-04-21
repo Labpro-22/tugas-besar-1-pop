@@ -2,6 +2,8 @@
 #define ACTION_TILE_HPP
 
 #include "Tile.hpp"
+#include "../../include/models/PropertyTile.hpp"
+
 
  
 class ActionTile : public Tile {
@@ -83,6 +85,10 @@ public:
  
     // Pure virtual — setiap petak spesial punya logika kedatangan unik
     virtual void handleArrival(Player& player) = 0; // fungsi khusus SpecialTile Class mirip dengan onLanded
+
+    void triggerEffect(Player& player) override {
+        handleArrival(player);
+    }
  
 };
 
@@ -114,7 +120,7 @@ public:
     void imprisonPlayer(Player& player);
     /// Keluarkan pemain dari penjara (setelah bayar/double/kartu bebas)
     void releasePlayer(Player& player);
-    int getFine();
+    int getFine() const;
     void processTurnInJail(Player& player);
     void handlePayFine(Player& player);
     void handleRollForDouble(Player& player);

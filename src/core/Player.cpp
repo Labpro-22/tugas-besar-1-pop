@@ -69,9 +69,17 @@ void Player::removeProperty(PropertyTile* property) {
 string Player::getUsername() const { return username; }
 int Player::getMoney() const { return money; }
 int Player::getPosition() const { return position; }
-PlayerStatus Player::getStatus() const { return status; }
+PlayerStatus Player::getStatus( ) const { return status; }
 const vector<SkillCard*>& Player::getHandCards() const { return handCards; }
 const vector<PropertyTile*>& Player::getOwnedProperties() const { return ownedProperties; }
+int Player::getJailTurnsLeft() const { return jailTurnsLeft; }
+int Player::getDoubleStreak() const { return doubleStreak; }
+bool Player::getHasUsedCardThisTurn() const { return hasUsedCardThisTurn; }
+bool Player::isShieldActive() const { return shieldActive; }
+int Player::getActiveDiscountPercent() const { return activeDiscount; }
+
+void Player::setHasUsedCardThisTurn(bool used) { hasUsedCardThisTurn = used; }
+void Player::setActiveDiscountPercent(int percent) { activeDiscount = percent; }
 
 int Player::getWealth() const {
     //TODO : nunggu manu

@@ -10,12 +10,6 @@ using namespace std;
 class PropertyTile;
 class SkillCard;
 
-enum class PlayerStatus {
-    ACTIVE,
-    JAILED,
-    BANKRUPT
-};
-
 class Player {
 private:
     string username;
@@ -25,6 +19,7 @@ private:
     vector<PropertyTile*> ownedProperties;
     vector<SkillCard*> handCards;
 
+    int activeDiscount;
     int jailTurnsLeft;
     int doubleStreak;
     bool hasUsedCardThisTurn;
@@ -44,6 +39,14 @@ public:
     PlayerStatus getStatus() const;
     const vector<SkillCard*>& getHandCards() const;
     const vector<PropertyTile*>& getOwnedProperties() const;
+    int getJailTurnsLeft() const;
+    int getDoubleStreak() const;
+    bool getHasUsedCardThisTurn() const;
+    bool isShieldActive() const;
+    int getActiveDiscountPercent() const;
+
+    void setHasUsedCardThisTurn(bool used);
+    void setActiveDiscountPercent(int percent);
 
     void addCard(SkillCard* card);
     void removeCard(int index);

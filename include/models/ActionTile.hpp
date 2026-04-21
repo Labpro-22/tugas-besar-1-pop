@@ -2,6 +2,8 @@
 #define ACTION_TILE_HPP
 
 #include "Tile.hpp"
+#include "../../include/models/PropertyTile.hpp"
+
 
  
 class ActionTile : public Tile {
@@ -118,7 +120,7 @@ public:
     void imprisonPlayer(Player& player);
     /// Keluarkan pemain dari penjara (setelah bayar/double/kartu bebas)
     void releasePlayer(Player& player);
-    int getFine();
+    int getFine() const;
     void processTurnInJail(Player& player);
     void handlePayFine(Player& player);
     void handleRollForDouble(Player& player);

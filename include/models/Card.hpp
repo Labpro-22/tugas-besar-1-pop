@@ -17,26 +17,60 @@ private:
 
 public:
     
-    CardDeck();
-    ~CardDeck();
+        
+    CardDeck() = default;
+    ~CardDeck(){
+        for (T* card : deck)        delete card;
+        for (T* card : discardPile) delete card;
+        deck.clear();
+        discardPile.clear();
+    }
+    
 
-    void addCard(T* card);
-    void shuffle();
+    void addCard(T* card){
+        if (card) deck.push_back(card);
+    }
+    void shuffle(){
+        std::random_device rd;
+        std::mt19937 rng(rd());
+        std::shuffle(deck.begin(), deck.end(), rng);
+    }
 
     // Ambil kartu teratas dari deck.
-    T* draw(); 
+    T* draw(){
+         if (deck.empty()) {
+            reshuffleDiscard();
+        }
+        if (deck.empty()) {
+            throw std::runtime_error("CardDeck: deck dan discard pile keduanya kosong.");
+        }
+        T* card = deck.back();
+        deck.pop_back();
+        return card;
+    }
 
     // Masukkan kartu ke discard pile abis dipake.
-    void discard(T* card);
+    void discard(T* card){
+         if (card) discardPile.push_back(card);
+    }
 
     // Kocok ulang discard pile menjadi deck baru (deck lama harus sudah kosong).
-    void reshuffleDiscard();
+    void reshuffleDiscard(){
+        for (T* card : discardPile) {
+            deck.push_back(card);
+        }
+        discardPile.clear();
+        shuffle();
+    }
 
    
 
-    bool isEmpty();
-    int  size();
-    int  discardSize() ;
+    bool isEmpty() const {
+        return deck.empty(); }
+    int  size() const { 
+        return static_cast<int>(deck.size()); }
+    int  discardSize() const {
+        return static_cast<int>(discardPile.size()); }
 
     // Akses read-only ke isi deck (berguna untuk save/load)
     // const std::vector<T*>& getDeck()        const { return deck; }

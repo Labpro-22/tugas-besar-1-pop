@@ -3,6 +3,7 @@
 
 
 #include "core/Enums.hpp"
+#include <string>
 #include <vector>
 #include <algorithm>
 #include <random>
@@ -72,9 +73,9 @@ public:
     int  discardSize() const {
         return static_cast<int>(discardPile.size()); }
 
-    // Akses read-only ke isi deck (berguna untuk save/load)
-    // const std::vector<T*>& getDeck()        const { return deck; }
-    // const std::vector<T*>& getDiscardPile() const { return discardPile; }
+    // Akses read-only ke isi deck (dipakai SaveLoadManager)
+    const std::vector<T*>& getDeck()        const { return deck; }
+    const std::vector<T*>& getDiscardPile() const { return discardPile; }
 };
 
 
@@ -108,49 +109,44 @@ private:
 
 public:
     MoveCard();
-
-    // Konstruktor kalo ada dari save
     explicit MoveCard(int savedSteps);
 
-    int getSteps() const { return steps; }
-
+    int  getSteps() const;
     void use(Player& player, GameEngine& engine) override;
+    std::string getValueString() const override;
 };
 
 
 class DiscountCard : public SkillCard {
 private:
-    int discountPercent; 
-    int remainingTurns;  
+    int discountPercent;
+    int remainingTurns;
 
 public:
     DiscountCard();
     explicit DiscountCard(int savedPercent, int savedTurns = 1);
 
-    int getDiscountPercent() const ;
-    int getRemainingTurns()  const ;
+    int  getDiscountPercent() const;
+    int  getRemainingTurns()  const;
     void decrementTurns();
     void use(Player& player, GameEngine& engine) override;
-
-
+    std::string getValueString() const override;
 };
 
 
 class ShieldCard : public SkillCard {
 public:
     ShieldCard();
-
     void use(Player& player, GameEngine& engine) override;
-
+    std::string getValueString() const override;
 };
 
 
 class TeleportCard : public SkillCard {
 public:
     TeleportCard();
-
     void use(Player& player, GameEngine& engine) override;
-
+    std::string getValueString() const override;
 };
 
 
@@ -158,16 +154,15 @@ class LassoCard : public SkillCard {
 public:
     LassoCard();
     void use(Player& player, GameEngine& engine) override;
+    std::string getValueString() const override;
 };
 
 
 class DemolitionCard : public SkillCard {
 public:
     DemolitionCard();
-
-
     void use(Player& player, GameEngine& engine) override;
-    
+    std::string getValueString() const override;
 };
 
 

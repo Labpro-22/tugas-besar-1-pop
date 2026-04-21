@@ -1,5 +1,5 @@
-#include "Board.hpp"
-#include "Tile.hpp"
+#include "../include/models/Board.hpp"
+#include "../include/models/Tile.hpp"
 #include <iostream>
 
 Board* Board::instance = nullptr;

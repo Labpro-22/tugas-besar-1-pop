@@ -83,6 +83,10 @@ public:
  
     // Pure virtual — setiap petak spesial punya logika kedatangan unik
     virtual void handleArrival(Player& player) = 0; // fungsi khusus SpecialTile Class mirip dengan onLanded
+
+    void triggerEffect(Player& player) override {
+        handleArrival(player);
+    }
  
 };
 

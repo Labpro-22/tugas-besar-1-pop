@@ -21,7 +21,7 @@ private:
 public:
     static bool saveGame(const std::string& fileName, const GameEngine& engine);
     static bool loadGame(const std::string& fileName, GameEngine& engine);
-    static bool existFile(const std::string& fileName);
+    static bool fileExists(const std::string& fileName);
     
 };
 

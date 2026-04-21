@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include "../models/Board.hpp" //jujur gatau tar ditaro dimana, placeholder dulu aje
-#include "../models/Player.hpp"
+#include "../core/Player.hpp"
 #include "../models/PropertyTile.hpp"
 #include "../core/TransactionLogger.hpp" //jujur gatau tar ditaro dimana, placeholder dulu aje
 

@@ -3,7 +3,6 @@
 
 #include <string>
 
-using namespace std;
 
 const int maxPlayer = 4;
 
@@ -72,8 +71,8 @@ enum class LogActionType { // Plis ini beda sama type" yang di class lain yak, i
     FESTIVAL, BANKRUPT, SAVE, LOAD, DOUBLE_ROLL, UNKNOWN
 };
 
-string actionTypeToString(LogActionType type);
-LogActionType stringToActionType(const string& str);
+std::string actionTypeToString(LogActionType type);
+LogActionType stringToActionType(const std::string& str);
 
 
 #endif

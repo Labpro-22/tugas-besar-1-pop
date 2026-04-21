@@ -1,22 +1,3 @@
-/*
- * Card.cpp
- * Implementasi semua class kartu sesuai spesifikasi Nimonspoli.
- *
- * SKILL CARD (kartu tangan, maks 3 di tangan, 1x pakai per giliran, hanya sebelum dadu):
- *  - MoveCard        : Maju sekian petak. Jumlah langkah acak saat kartu DIDAPAT.
- *  - DiscountCard    : Diskon persentase acak saat kartu DIDAPAT, berlaku 1 giliran.
- *  - ShieldCard      : Kebal semua tagihan/sanksi selama 1 giliran.
- *  - TeleportCard    : Pindah ke petak manapun.
- *  - LassoCard       : Tarik pemain lawan yang berada di DEPAN ke posisi pemain saat ini.
- *  - DemolitionCard  : Hancurkan 1 bangunan properti milik lawan.
- *
- * ACTION CARD (diambil saat mendarat di petak kartu, langsung dieksekusi, lalu reshuffle):
- *  - ChanceCard      : NEAREST_STATION / MOVE_BACK_3 / GO_TO_JAIL
- *  - CommunityChestCard : BIRTHDAY (dapat M100 dari tiap pemain) /
- *                         DOCTOR   (bayar M700 ke Bank) /
- *                         ELECTION (bayar M200 ke tiap pemain)
- */
-
 #include "Card.hpp"
 #include "Player.hpp"
 #include "GameEngine.hpp"
@@ -132,9 +113,6 @@ std::string DiscountCard::getValueString() const {
 }
 
 
-// =============================================================================
-// ShieldCard  — kebal semua tagihan/sanksi selama 1 giliran
-// =============================================================================
 
 ShieldCard::ShieldCard()
     : SkillCard("ShieldCard",

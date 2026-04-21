@@ -2,7 +2,10 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "Tile.hpp"
+using namespace std;
+
+class Tile;
+class ConfigLoader;
 
 class Board {
 private:
@@ -11,12 +14,18 @@ private:
     map<std::string, int> tileMap;
     int jailPositionIndex;
     Board();
+
 public:
-    friend class ConfigLoader; 
+    friend class ConfigLoader;
+
     static Board* getInstance();
     ~Board();
     int getTotalTiles() const;
-    void printBoardStatus(); 
+    Tile* getTileAt(int index);
+    Tile* getTileByKode(const string& kode);
+    int getJailPosition() const;
+
+    void printBoardStatus();
     void resetBoard();
     Tile* getTileAt(int index); 
     Tile* getTileByKode(const std::string& kode);

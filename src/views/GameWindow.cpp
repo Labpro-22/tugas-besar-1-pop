@@ -1,6 +1,5 @@
 #include "../../include/views/GameWindow.hpp"
 #include <algorithm>
-#include <cstring>
 #include <raylib.h>
 #include <sstream>
 #include <unordered_map>
@@ -104,6 +103,7 @@ struct AssetCache {
     auto it = tex.find(key);
     return it == tex.end() ? nullptr : &it->second;
   }
+
   void loadPng(const std::string &key, const char *path) {
     if (!FileExists(path))
       return;
@@ -111,26 +111,35 @@ struct AssetCache {
     if (!img.data)
       return;
     Texture2D t = LoadTextureFromImage(img);
-    SetTextureFilter(t, TEXTURE_FILTER_POINT);
+
+    SetTextureFilter(t, TEXTURE_FILTER_BILINEAR);
     UnloadImage(img);
     tex[key] = t;
   }
+
   void loadAll() {
     if (loaded)
       return;
-    loadPng("tile_go", "assets/tile_go.png");
-    loadPng("tile_jail", "assets/tile_jail.png");
-    loadPng("tile_free_parking", "assets/tile_free_parking.png");
-    loadPng("tile_go_to_jail", "assets/tile_go_to_jail.png");
-    loadPng("tile_chance", "assets/tile_chance.png");
-    loadPng("tile_community_chest", "assets/tile_community_chest.png");
-    loadPng("tile_income_tax", "assets/tile_income_tax.png");
-    loadPng("tile_luxury_tax", "assets/tile_luxury_tax.png");
-    loadPng("tile_station", "assets/tile_station.png");
-    loadPng("tile_electric", "assets/tile_electric.png");
-    loadPng("tile_waterworks", "assets/tile_waterworks.png");
+
+    for (int i = 1; i <= 6; i++) {
+      loadPng("dice_" + std::to_string(i),
+              ("assets/Dice" + std::to_string(i) + ".png").c_str());
+    }
+
+    loadPng("pion", "assets/Pion.png");
+
+    loadPng("cmd_lempar_dadu", "assets/LemparDadu.png");
+    loadPng("cmd_beli", "assets/Beli.png");
+    loadPng("cmd_gadai", "assets/Gadai.png");
+    loadPng("cmd_tebus", "assets/Tebus.png");
+    loadPng("cmd_bangun", "assets/Bangun.png");
+    loadPng("cmd_cetak_akta", "assets/CetakAkta.png");
+    loadPng("cmd_cetak_papan", "assets/CetakPapan.png");
+    loadPng("cmd_cetak_properti", "assets/CetakProperti.png");
+    loadPng("cmd_akhiri", "assets/AkhiriGiliran.png");
     loaded = true;
   }
+
   void unloadAll() {
     for (auto &kv : tex)
       UnloadTexture(kv.second);
@@ -140,92 +149,73 @@ struct AssetCache {
 };
 static AssetCache gAssets;
 
-static void drawMiniDie(Font &font, bool fontLoaded, int x, int y, int value) {
-  const int sz = 32;
-  DrawRectangle(x, y, sz, sz, WHITE);
-  DrawRectangleLinesEx({(float)x, (float)y, (float)sz, (float)sz}, 2,
-                       {58, 42, 24, 255});
-  bool p[9] = {};
-  switch (value) {
-  case 1:
-    p[4] = 1;
-    break;
-  case 2:
-    p[0] = p[8] = 1;
-    break;
-  case 3:
-    p[0] = p[4] = p[8] = 1;
-    break;
-  case 4:
-    p[0] = p[2] = p[6] = p[8] = 1;
-    break;
-  case 5:
-    p[0] = p[2] = p[4] = p[6] = p[8] = 1;
-    break;
-  case 6:
-    p[0] = p[2] = p[3] = p[5] = p[6] = p[8] = 1;
-    break;
-  }
-  int pad = 6, cell = (sz - 2 * pad) / 3;
-  for (int i = 0; i < 9; i++) {
-    if (!p[i])
-      continue;
-    DrawCircle(x + pad + (i % 3) * cell + cell / 2,
-               y + pad + (i / 3) * cell + cell / 2, 3, {43, 32, 22, 255});
+static void drawIconInRect(Texture2D *tex, Rectangle rect, Color tintColor) {
+  if (!tex)
+    return;
+  float scale = std::min(rect.width / (float)tex->width,
+                         rect.height / (float)tex->height);
+  float dw = tex->width * scale;
+  float dh = tex->height * scale;
+  DrawTextureEx(
+      *tex,
+      {rect.x + (rect.width - dw) / 2.0f, rect.y + (rect.height - dh) / 2.0f},
+      0.0f, scale, tintColor);
+}
+
+static void drawDie(AssetCache &assets, int x, int y, int size, int value,
+                    Color tintColor) {
+  if (value < 1 || value > 6)
+    return;
+  Texture2D *tex = assets.get("dice_" + std::to_string(value));
+  if (tex) {
+    drawIconInRect(tex, {(float)x, (float)y, (float)size, (float)size},
+                   tintColor);
+  } else {
+
+    DrawRectangle(x, y, size, size, WHITE);
+    DrawRectangleLinesEx({(float)x, (float)y, (float)size, (float)size}, 2,
+                         {58, 42, 24, 255});
+    bool p[9] = {};
+    switch (value) {
+    case 1:
+      p[4] = 1;
+      break;
+    case 2:
+      p[0] = p[8] = 1;
+      break;
+    case 3:
+      p[0] = p[4] = p[8] = 1;
+      break;
+    case 4:
+      p[0] = p[2] = p[6] = p[8] = 1;
+      break;
+    case 5:
+      p[0] = p[2] = p[4] = p[6] = p[8] = 1;
+      break;
+    case 6:
+      p[0] = p[2] = p[3] = p[5] = p[6] = p[8] = 1;
+      break;
+    }
+    int pad = size / 5, cell = (size - 2 * pad) / 3;
+    for (int i = 0; i < 9; i++)
+      if (p[i])
+        DrawCircle(x + pad + (i % 3) * cell + cell / 2,
+                   y + pad + (i / 3) * cell + cell / 2, size / 10,
+                   {43, 32, 22, 255});
   }
 }
 
-static void drawChessPawn(int x, int y, Color fill) {
-  Color brd = {58, 42, 24, 255};
-  DrawCircle(x + 10, y + 5, 4, fill);
-  DrawCircleLines(x + 10, y + 5, 4, brd);
-  Vector2 v1 = {(float)(x + 5), (float)(y + 18)};
-  Vector2 v2 = {(float)(x + 15), (float)(y + 18)};
-  Vector2 v3 = {(float)(x + 10), (float)(y + 9)};
-  DrawTriangle(v1, v3, v2, fill);
-  DrawTriangleLines(v1, v3, v2, brd);
-  DrawRectangle(x + 3, y + 18, 14, 4, fill);
-  DrawRectangleLines(x + 3, y + 18, 14, 4, brd);
-}
+static void drawPion(AssetCache &assets, int x, int y, int size,
+                     Color playerColor) {
+  Texture2D *tex = assets.get("pion");
+  if (tex) {
+    drawIconInRect(tex, {(float)x, (float)y, (float)size, (float)size},
+                   playerColor);
+  } else {
 
-static void drawIcon(const std::string &kind, int x, int y, Color c) {
-  if (kind == "dice") {
-    DrawRectangleLines(x, y, 20, 20, c);
-    DrawCircle(x + 6, y + 6, 2, c);
-    DrawCircle(x + 14, y + 14, 2, c);
-    DrawCircle(x + 14, y + 6, 2, c);
-    DrawCircle(x + 6, y + 14, 2, c);
-  } else if (kind == "buy") {
-    DrawRectangleLines(x + 3, y + 6, 14, 12, c);
-    DrawLine(x + 6, y + 6, x + 8, y + 2, c);
-    DrawLine(x + 14, y + 6, x + 12, y + 2, c);
-    DrawLine(x + 8, y + 2, x + 12, y + 2, c);
-  } else if (kind == "mort") {
-    DrawRectangleLines(x + 3, y + 4, 14, 14, c);
-    DrawText("M", x + 7, y + 7, 8, c);
-  } else if (kind == "redeem") {
-    DrawRectangleLines(x + 3, y + 4, 14, 14, c);
-    DrawLine(x + 6, y + 15, x + 9, y + 18, c);
-    DrawLine(x + 9, y + 18, x + 15, y + 12, c);
-  } else if (kind == "build") {
-    DrawRectangleLines(x + 2, y + 10, 7, 8, c);
-    DrawRectangleLines(x + 11, y + 5, 7, 13, c);
-  } else if (kind == "board") {
-    DrawRectangleLines(x + 2, y + 2, 16, 16, c);
-    DrawLine(x + 2, y + 8, x + 18, y + 8, c);
-    DrawLine(x + 8, y + 2, x + 8, y + 18, c);
-  } else if (kind == "deed") {
-    DrawRectangleLines(x + 4, y + 2, 13, 16, c);
-    DrawLine(x + 7, y + 9, x + 14, y + 9, c);
-    DrawLine(x + 7, y + 13, x + 14, y + 13, c);
-  } else if (kind == "prop") {
-    DrawLine(x + 2, y + 10, x + 10, y + 3, c);
-    DrawLine(x + 10, y + 3, x + 18, y + 10, c);
-    DrawRectangleLines(x + 4, y + 9, 12, 10, c);
-  } else if (kind == "end") {
-    DrawCircleLines(x + 10, y + 10, 8, c);
-    DrawLine(x + 6, y + 6, x + 14, y + 14, c);
-    DrawLine(x + 14, y + 6, x + 6, y + 14, c);
+    int r = size / 2;
+    DrawCircle(x + r, y + r, (float)r, playerColor);
+    DrawCircleLines(x + r, y + r, (float)r, {58, 42, 24, 255});
   }
 }
 
@@ -301,7 +291,10 @@ void GameWindow::drawButton(const std::string &label, Rectangle rect, Color bg,
     l1 = label.substr(0, nl);
     l2 = label.substr(nl + 1);
   }
-  auto tw = [&](const std::string &s) { return (int)s.size() * fs; };
+  auto tw = [&](const std::string &s) {
+    return fontLoaded ? (int)MeasureTextEx(pixelFont, s.c_str(), fs, 1.0f).x
+                      : MeasureText(s.c_str(), fs);
+  };
   if (l2.empty()) {
     drawPixelText(l1, (int)(rect.x + (rect.width - tw(l1)) / 2),
                   (int)(rect.y + (rect.height - fs) / 2), fs, fg);
@@ -355,24 +348,39 @@ void GameWindow::drawBoard() {
                        {C_BORDER.r, C_BORDER.g, C_BORDER.b, 45});
 
   int lx = (int)(cx + cw / 2), ly = (int)(cy + ch / 2);
-  drawPixelText("NIMONSPOLI", lx - 110, ly - 110, 22, {166, 38, 26, 255});
-  drawPixelText("TURN", lx - 24, ly - 70, 10, C_TEXT_DIM);
+  int w_title = fontLoaded
+                    ? (int)MeasureTextEx(pixelFont, "NIMONSPOLI", 22, 1.0f).x
+                    : MeasureText("NIMONSPOLI", 22);
+  drawPixelText("NIMONSPOLI", lx - w_title / 2, ly - 110, 22,
+                {166, 38, 26, 255});
+  drawPixelText("TURN", lx - MeasureText("TURN", 10) / 2, ly - 70, 10,
+                C_TEXT_DIM);
 
   std::string tBig =
       std::to_string(state.currentTurn) + " / " + std::to_string(state.maxTurn);
-  drawPixelText(tBig, lx - (int)tBig.size() * 38 / 2, ly - 40, 38, C_TEXT);
+  int w_tbig = fontLoaded
+                   ? (int)MeasureTextEx(pixelFont, tBig.c_str(), 38, 1.0f).x
+                   : MeasureText(tBig.c_str(), 38);
+  drawPixelText(tBig, lx - w_tbig / 2, ly - 40, 38, C_TEXT);
 
   if (!state.players.empty()) {
     std::string gir =
         "GILIRAN > " + state.players[state.currentPlayerIndex].username;
-    drawPixelText(gir, lx - (int)gir.size() * 9 / 2, ly + 20, 9, C_TEXT_DIM);
+    int w_gir = fontLoaded
+                    ? (int)MeasureTextEx(pixelFont, gir.c_str(), 9, 1.0f).x
+                    : MeasureText(gir.c_str(), 9);
+    drawPixelText(gir, lx - w_gir / 2, ly + 20, 9, C_TEXT_DIM);
   }
 
   int d1 = state.dice.dice1, d2 = state.dice.dice2;
   if (d1 > 0 && d2 > 0) {
-    drawMiniDie(pixelFont, fontLoaded, lx - 50, ly + 46, d1);
-    drawMiniDie(pixelFont, fontLoaded, lx - 10, ly + 46, d2);
-    drawPixelText("= " + std::to_string(d1 + d2), lx + 30, ly + 54, 10, C_TEXT);
+    drawDie(gAssets, lx - 50, ly + 46, 36, d1, C_TEXT);
+    drawDie(gAssets, lx + 14, ly + 46, 36, d2, C_TEXT);
+    std::string diceSum = "= " + std::to_string(d1 + d2);
+    int w_sum = fontLoaded
+                    ? (int)MeasureTextEx(pixelFont, diceSum.c_str(), 10, 1.0f).x
+                    : MeasureText(diceSum.c_str(), 10);
+    drawPixelText(diceSum, lx - w_sum / 2 + 28, ly + 54, 10, C_TEXT);
   }
 
   for (int idx = 1; idx <= 40; idx++) {
@@ -400,56 +408,48 @@ void GameWindow::drawTile(const TileInfo &tile, Rectangle rect) {
   bool isSideRgt = (!isCorner && rect.width >= cs - 1 &&
                     rect.x > boardRect.x + boardRect.width / 2);
 
-  if (isCorner) {
-    const char *key = nullptr;
-    if (tile.kode == "GO")
-      key = "tile_go";
-    else if (tile.kode == "PEN" || tile.kode == "PENJARA")
-      key = "tile_jail";
-    else if (tile.kode == "BBP")
-      key = "tile_free_parking";
-    else if (tile.kode == "PPJ")
-      key = "tile_go_to_jail";
+  DrawRectangleRec(rect, C_TILE_FACE);
 
-    Texture2D *tex = key ? gAssets.get(key) : nullptr;
-    if (tex) {
-      DrawTexturePro(*tex, {0, 0, (float)tex->width, (float)tex->height}, rect,
-                     {0, 0}, 0.0f, WHITE);
-    } else {
-      DrawRectangleRec(rect, C_TILE_FACE);
-      drawPixelText(tile.kode, (int)rect.x + 6, (int)rect.y + 30, 8, C_TEXT);
+  if (isCorner) {
+    const char *l1 = "", *l2 = "";
+    Color col = C_TEXT;
+    if (tile.kode == "GO") {
+      l1 = "COLLECT";
+      l2 = "M200";
+      col = {47, 138, 62, 255};
+    } else if (tile.kode == "PEN") {
+      l1 = "JUST";
+      l2 = "VISITING";
+      col = C_TEXT;
+    } else if (tile.kode == "BBP") {
+      l1 = "FREE";
+      l2 = "PARKING";
+      col = C_TEXT;
+    } else if (tile.kode == "PPJ") {
+      l1 = "GO TO";
+      l2 = "JAIL";
+      col = C_DANGER;
     }
-    DrawRectangleLinesEx(rect, 1, C_BORDER);
+
+    if (tile.kode == "PEN") {
+      DrawRectangle((int)rect.x, (int)rect.y, (int)rect.width / 2,
+                    (int)rect.height, {231, 135, 28, 180});
+    }
+
+    int mx = (int)(rect.x + rect.width / 2);
+    int my = (int)(rect.y + rect.height / 2);
+    if (l1[0]) {
+      int w_l1 = fontLoaded ? (int)MeasureTextEx(pixelFont, l1, 8, 1.0f).x
+                            : MeasureText(l1, 8);
+      int w_l2 = fontLoaded ? (int)MeasureTextEx(pixelFont, l2, 8, 1.0f).x
+                            : MeasureText(l2, 8);
+      drawPixelText(l1, mx - w_l1 / 2, my - 16, 8, col);
+      drawPixelText(l2, mx - w_l2 / 2, my + 2, 8, col);
+    }
+    drawPixelText(tile.kode, (int)rect.x + 4, (int)rect.y + 4, 6, C_TEXT_DIM);
+    DrawRectangleLinesEx(rect, 2, C_BORDER);
     return;
   }
-
-  const char *illKey = nullptr;
-  if (tile.kode == "KSP")
-    illKey = "tile_chance";
-  else if (tile.kode == "DNU")
-    illKey = "tile_community_chest";
-  else if (tile.kode == "PPH")
-    illKey = "tile_income_tax";
-  else if (tile.kode == "PBM")
-    illKey = "tile_luxury_tax";
-  else if (tile.kode == "GBR" || tile.kode == "STB" || tile.kode == "TUG" ||
-           tile.kode == "GUB")
-    illKey = "tile_station";
-  else if (tile.kode == "PLN")
-    illKey = "tile_electric";
-  else if (tile.kode == "PAM")
-    illKey = "tile_waterworks";
-
-  else if (tile.kode.find("CHANCE") != std::string::npos ||
-           tile.kode.find("KSP") != std::string::npos)
-    illKey = "tile_chance";
-  else if (tile.kode.find("DNU") != std::string::npos ||
-           tile.kode.find("DANA") != std::string::npos)
-    illKey = "tile_community_chest";
-
-  Texture2D *illTex = illKey ? gAssets.get(illKey) : nullptr;
-
-  DrawRectangleRec(rect, C_TILE_FACE);
 
   if (!tile.colorGroup.empty()) {
     Color sc = getTileColor(tile.colorGroup);
@@ -467,88 +467,105 @@ void GameWindow::drawTile(const TileInfo &tile, Rectangle rect) {
     DrawRectangleLinesEx(sr, 1, C_BORDER);
   }
 
-  if (illTex) {
-    float pad = 3, nameH = 16;
-    Rectangle face = {rect.x + pad, rect.y + pad, rect.width - 2 * pad,
-                      rect.height - 2 * pad};
-    if (isSideBtm) {
-      face.y += nameH;
-      face.height -= nameH;
-    } else if (isSideTop) {
-      face.height -= nameH;
-    } else if (isSideLft) {
-      face.width -= nameH;
-    } else if (isSideRgt) {
-      face.x += nameH;
-      face.width -= nameH;
-    }
-    float asp = (float)illTex->width / illTex->height;
-    float dw = face.width, dh = face.height;
-    if (face.width / face.height > asp)
-      dw = face.height * asp;
-    else
-      dh = face.width / asp;
-    DrawTexturePro(*illTex, {0, 0, (float)illTex->width, (float)illTex->height},
-                   {face.x + (face.width - dw) / 2,
-                    face.y + (face.height - dh) / 2, dw, dh},
-                   {0, 0}, 0.0f, WHITE);
+  int fs = 7;
+  int tx = (int)rect.x + 3, ty = (int)rect.y + 3;
+  if (isSideBtm)
+    ty = (int)rect.y + 22;
+  else if (isSideRgt)
+    tx = (int)rect.x + 22;
+
+  drawPixelText(tile.kode, tx, ty, fs, C_TEXT);
+
+  const char *secLabel = nullptr;
+  Color secColor = C_TEXT_DIM;
+  if (tile.kode == "KSP") {
+    secLabel = "?";
+    secColor = C_WARN;
+  } else if (tile.kode == "DNU") {
+    secLabel = "CC";
+    secColor = {38, 89, 204, 255};
+  } else if (tile.kode == "PPH") {
+    secLabel = "TAX";
+    secColor = C_DANGER;
+  } else if (tile.kode == "PBM") {
+    secLabel = "TAX";
+    secColor = C_DANGER;
+  } else if (tile.kode == "FES") {
+    secLabel = "FES";
+    secColor = C_WARN;
+  } else if (tile.kode == "GBR" || tile.kode == "STB" || tile.kode == "TUG" ||
+             tile.kode == "GUB") {
+    secLabel = "ST";
+    secColor = C_TEXT_DIM;
+  } else if (tile.kode == "PLN" || tile.kode == "PAM") {
+    secLabel = "UTL";
+    secColor = C_TEXT_DIM;
+  }
+
+  if (secLabel)
+    drawPixelText(secLabel, tx, ty + fs + 2, fs, secColor);
+
+  if (tile.price > 0) {
+    std::string ps = "M" + std::to_string(tile.price);
+    int py = (int)(rect.y + rect.height) - fs - 3;
+    if (isSideTop)
+      py = ty + fs + (secLabel ? fs + 4 : 2);
+    drawPixelText(ps, tx, py, fs - 1, C_GOOD);
   }
 
   if (tile.propStatus == "MORTGAGED")
     DrawRectangleRec(rect, {C_WARN.r, C_WARN.g, C_WARN.b, 55});
 
-  int fs = 7, tx = (int)rect.x + 4, ty = (int)rect.y + 4;
-  if (isSideBtm)
-    ty = (int)rect.y + 22;
-  else if (isSideRgt)
-    tx = (int)rect.x + 22;
-  drawPixelText(tile.kode, tx, ty, fs, C_TEXT);
-
-  if (tile.price > 0) {
-    int py = (int)(rect.y + rect.height) - fs - 5;
-    if (isSideTop)
-      py = (int)rect.y + 4 + fs + 3;
-    drawPixelText("M" + std::to_string(tile.price), tx, py, fs - 1, C_GOOD);
-  }
-
   if (tile.hasHotel) {
-    if (isSideBtm)
-      DrawRectangle((int)rect.x + 3, (int)rect.y + 3, (int)rect.width - 6, 12,
-                    C_DANGER);
-    else if (isSideTop)
-      DrawRectangle((int)rect.x + 3, (int)rect.y + (int)rect.height - 15,
-                    (int)rect.width - 6, 12, C_DANGER);
-    else if (isSideLft)
-      DrawRectangle((int)rect.x + (int)rect.width - 15, (int)rect.y + 3, 12,
-                    (int)rect.height - 6, C_DANGER);
-    else if (isSideRgt)
-      DrawRectangle((int)rect.x + 3, (int)rect.y + 3, 12, (int)rect.height - 6,
-                    C_DANGER);
+    int hx = 0, hy = 0, hw = 0, hh = 0;
+    if (isSideBtm) {
+      hx = (int)rect.x + 2;
+      hy = (int)rect.y + 2;
+      hw = (int)rect.width - 4;
+      hh = 10;
+    } else if (isSideTop) {
+      hx = (int)rect.x + 2;
+      hy = (int)rect.y + (int)rect.height - 12;
+      hw = (int)rect.width - 4;
+      hh = 10;
+    } else if (isSideLft) {
+      hx = (int)rect.x + (int)rect.width - 12;
+      hy = (int)rect.y + 2;
+      hw = 10;
+      hh = (int)rect.height - 4;
+    } else if (isSideRgt) {
+      hx = (int)rect.x + 2;
+      hy = (int)rect.y + 2;
+      hw = 10;
+      hh = (int)rect.height - 4;
+    }
+    DrawRectangle(hx, hy, hw, hh, C_DANGER);
+    DrawRectangleLines(hx, hy, hw, hh, C_BORDER);
   } else
     for (int h = 0; h < tile.houseCount && h < 4; h++) {
       int hx = 0, hy = 0;
       if (isSideBtm) {
-        hx = (int)rect.x + 3 + h * 11;
-        hy = (int)rect.y + 4;
+        hx = (int)rect.x + 2 + h * 10;
+        hy = (int)rect.y + 2;
       } else if (isSideTop) {
-        hx = (int)rect.x + 3 + h * 11;
-        hy = (int)rect.y + (int)rect.height - 13;
+        hx = (int)rect.x + 2 + h * 10;
+        hy = (int)rect.y + (int)rect.height - 11;
       } else if (isSideLft) {
-        hx = (int)rect.x + (int)rect.width - 13;
-        hy = (int)rect.y + 3 + h * 11;
+        hx = (int)rect.x + (int)rect.width - 11;
+        hy = (int)rect.y + 2 + h * 10;
       } else if (isSideRgt) {
-        hx = (int)rect.x + 4;
-        hy = (int)rect.y + 3 + h * 11;
+        hx = (int)rect.x + 2;
+        hy = (int)rect.y + 2 + h * 10;
       }
-      DrawRectangle(hx, hy, 9, 9, C_GOOD);
-      DrawRectangleLines(hx, hy, 9, 9, {13, 72, 24, 255});
+      DrawRectangle(hx, hy, 8, 8, C_GOOD);
+      DrawRectangleLines(hx, hy, 8, 8, {13, 72, 24, 255});
     }
 
   if (tile.propStatus == "MORTGAGED") {
-    int mx = (int)rect.x + (int)rect.width - 16, my = (int)rect.y + 2;
-    DrawRectangle(mx, my, 14, 10, C_WARN);
-    DrawRectangleLines(mx, my, 14, 10, C_BORDER);
-    drawPixelText("M", mx + 3, my + 2, 7, WHITE);
+    int mx = (int)rect.x + (int)rect.width - 15, my = (int)rect.y + 2;
+    DrawRectangle(mx, my, 13, 9, C_WARN);
+    DrawRectangleLines(mx, my, 13, 9, C_BORDER);
+    drawPixelText("M", mx + 3, my + 1, 7, WHITE);
   }
 
   if (!tile.ownerName.empty() && tile.propStatus == "OWNED") {
@@ -562,24 +579,24 @@ void GameWindow::drawTile(const TileInfo &tile, Rectangle rect) {
       Color oc = getPlayerColor(oi);
       int dx = 0, dy = 0;
       if (isSideBtm) {
-        dx = (int)rect.x + (int)rect.width - 10;
-        dy = (int)rect.y + 28;
+        dx = (int)rect.x + (int)rect.width - 8;
+        dy = (int)rect.y + 24;
       } else if (isSideTop) {
-        dx = (int)rect.x + (int)rect.width - 10;
-        dy = (int)rect.y + (int)rect.height - 28;
+        dx = (int)rect.x + (int)rect.width - 8;
+        dy = (int)rect.y + (int)rect.height - 24;
       } else if (isSideLft) {
-        dx = (int)rect.x + (int)rect.width - 28;
-        dy = (int)rect.y + 10;
+        dx = (int)rect.x + (int)rect.width - 24;
+        dy = (int)rect.y + 8;
       } else if (isSideRgt) {
-        dx = (int)rect.x + 28;
-        dy = (int)rect.y + 10;
+        dx = (int)rect.x + 24;
+        dy = (int)rect.y + 8;
       }
-      DrawCircle(dx, dy, 6, oc);
-      DrawCircleLines(dx, dy, 6, C_BORDER);
+      DrawCircle(dx, dy, 5, oc);
+      DrawCircleLines(dx, dy, 5, C_BORDER);
     }
   }
 
-  DrawRectangleLinesEx(rect, 1, {C_BORDER.r, C_BORDER.g, C_BORDER.b, 120});
+  DrawRectangleLinesEx(rect, 1, {C_BORDER.r, C_BORDER.g, C_BORDER.b, 110});
 }
 
 void GameWindow::drawPlayerPawns() {
@@ -587,14 +604,17 @@ void GameWindow::drawPlayerPawns() {
   for (int i = 0; i < (int)state.players.size(); i++)
     if (state.players[i].status != "BANKRUPT")
       posMap[state.players[i].position].push_back(i);
+
   for (auto &[pos, indices] : posMap) {
     int sp = (pos >= 1 && pos <= 40) ? pos : 1;
     Rectangle r = getTileRect(sp);
     for (int j = 0; j < (int)indices.size(); j++) {
-      float ox = (j % 2) * 13.0f, oy = (j / 2) * 14.0f;
-      drawChessPawn((int)(r.x + r.width - 22 - ox),
-                    (int)(r.y + r.height - 26 - oy),
-                    getPlayerColor(indices[j]));
+      Color pc = getPlayerColor(indices[j]);
+
+      float ox = (j % 2) * 20.0f, oy = (j / 2) * 20.0f;
+      int px = (int)(r.x + r.width - 20 - ox);
+      int py = (int)(r.y + r.height - 20 - oy);
+      drawPion(gAssets, px, py, 18, pc);
     }
   }
 }
@@ -604,7 +624,8 @@ void GameWindow::drawPlayerList() {
       sw = (int)sidebarRect.width;
   int startY = sy + 64 + 3 + 40 + 2 + 10;
   drawPixelText("PEMAIN", sx + 14, startY, 8, C_TEXT_DIM);
-  int rowH = 36, gap = 6, maxRows = std::min(4, (int)state.players.size());
+  int rowH = 36, gap = 6;
+  int maxRows = std::min(4, (int)state.players.size());
   for (int i = 0; i < maxRows; i++) {
     const PlayerInfo &p = state.players[i];
     int ry = startY + 14 + i * (rowH + gap);
@@ -618,15 +639,17 @@ void GameWindow::drawPlayerList() {
     DrawRectangleLinesEx(
         {(float)(sx + 12), (float)ry, (float)(sw - 24), (float)rowH},
         isActive ? 2 : 1, C_BORDER);
-    Color pc = getPlayerColor(i);
-    DrawCircle(sx + 28, ry + rowH / 2, 7, pc);
-    DrawCircleLines(sx + 28, ry + rowH / 2, 7, C_BORDER);
+
+    drawPion(gAssets, sx + 18, ry + rowH / 2 - 8, 16, getPlayerColor(i));
     Color nc = isActive ? Color{29, 93, 39, 255}
                         : (isBankrupt ? Color{130, 120, 100, 255} : C_TEXT);
     drawPixelText("P" + std::to_string(i + 1) + " " + truncate(p.username, 8),
                   sx + 44, ry + 11, 10, nc);
     std::string ms = formatMoney(p.money);
-    drawPixelText(ms, sx + sw - 24 - (int)ms.size() * 10 - 44, ry + 11, 10,
+    int ms_w = fontLoaded
+                   ? (int)MeasureTextEx(pixelFont, ms.c_str(), 10, 1.0f).x
+                   : MeasureText(ms.c_str(), 10);
+    drawPixelText(ms, sx + sw - 24 - ms_w - 44, ry + 11, 10,
                   isBankrupt ? Color{140, 125, 100, 255} : C_GOOD);
     drawPixelText("@" + std::to_string(p.position), sx + sw - 42, ry + 13, 8,
                   C_TEXT_DIM);
@@ -738,43 +761,42 @@ void GameWindow::drawSidebar() {
                            : state.players[state.currentPlayerIndex].username;
   Color ac = state.players.empty() ? C_ACCENT
                                    : getPlayerColor(state.currentPlayerIndex);
-  DrawCircle(sx + 22, by + bh / 2, 8, ac);
-  DrawCircleLines(sx + 22, by + bh / 2, 8, C_BORDER);
+
+  drawPion(gAssets, sx + 14, by + bh / 2 - 10, 20, ac);
   drawPixelText("GILIRAN: " + active, sx + 40, by + 13, 10, {29, 93, 39, 255});
   DrawRectangle(sx, by + bh, sw, 2, C_BORDER);
 
   drawPlayerList();
 
   {
-    int players = (int)state.players.size();
-    int diceY = sy + 64 + 3 + 40 + 2 + 10 + 14 + players * (36 + 6) + 8;
-    int h = 40;
+    int players2 = (int)state.players.size();
+    int diceY = sy + 64 + 3 + 40 + 2 + 10 + 14 + players2 * (36 + 6) + 8;
+    int h = 48;
     DrawRectangle(sx + 15, diceY + 3, sw - 24, h, C_SHADOW);
     DrawRectangle(sx + 12, diceY, sw - 24, h, C_PANEL_ALT);
     DrawRectangleLinesEx(
         {(float)(sx + 12), (float)diceY, (float)(sw - 24), (float)h}, 2,
         C_BORDER);
-    drawPixelText("DADU", sx + 22, diceY + 14, 8, C_TEXT_DIM);
-
+    drawPixelText("DADU", sx + 22, diceY + 18, 8, C_TEXT_DIM);
     int d1 = state.dice.dice1, d2 = state.dice.dice2;
-    int dx = sx + sw - 24 - 90;
+    int dx = sx + sw - 24 - 110;
     if (d1 > 0)
-      drawMiniDie(pixelFont, fontLoaded, dx, diceY + 4, d1);
+      drawDie(gAssets, dx, diceY + 6, 36, d1, C_TEXT);
     if (d2 > 0)
-      drawMiniDie(pixelFont, fontLoaded, dx + 38, diceY + 4, d2);
+      drawDie(gAssets, dx + 42, diceY + 6, 36, d2, C_TEXT);
     if (d1 > 0 && d2 > 0)
-      drawPixelText("= " + std::to_string(d1 + d2), dx + 78, diceY + 14, 10,
+      drawPixelText("= " + std::to_string(d1 + d2), dx + 86, diceY + 18, 10,
                     C_TEXT);
     else
-      drawPixelText("- . -", dx, diceY + 14, 10, C_TEXT_DIM);
+      drawPixelText("-.-", dx + 4, diceY + 18, 10, C_TEXT_DIM);
   }
 
   drawHandCards();
   drawLog();
 
   {
-    int sh = (int)sidebarRect.height;
-    int footY = sy + sh - 82;
+    int sh2 = (int)sidebarRect.height;
+    int footY = sy + sh2 - 82;
     DrawRectangle(sx, footY, sw, 2, C_BORDER);
     Rectangle logBtn = {(float)(sx + 14), (float)(footY + 8), (float)(sw - 28),
                         28.0f};
@@ -811,54 +833,70 @@ void GameWindow::drawCommandBar() {
   drawPixelText("PERINTAH", cx + 12, cy + 6, 8, C_TEXT_DIM);
 
   struct CmdBtn {
-    std::string label, icon, cmd;
+    std::string label, iconKey, cmd;
     Color bg, fg;
   };
   static const std::vector<CmdBtn> buttons = {
-      {"LEMPAR\nDADU", "dice", "LEMPAR_DADU", C_BTN_BG, C_BTN_TEXT},
-      {"BELI", "buy", "BELI", C_PANEL_ALT, C_TEXT},
-      {"GADAI", "mort", "GADAI", C_PANEL_ALT, C_TEXT},
-      {"TEBUS", "redeem", "TEBUS", C_PANEL_ALT, C_TEXT},
-      {"BANGUN", "build", "BANGUN", C_PANEL_ALT, C_TEXT},
-      {"CETAK\nPAPAN", "board", "CETAK_PAPAN", C_PANEL_ALT, C_TEXT},
-      {"CETAK\nAKTA", "deed", "CETAK_AKTA", C_PANEL_ALT, C_TEXT},
-      {"CETAK\nPROPERTI", "prop", "CETAK_PROPERTI", C_PANEL_ALT, C_TEXT},
+      {"LEMPAR\nDADU", "cmd_lempar_dadu", "LEMPAR_DADU", C_BTN_BG, C_BTN_TEXT},
+      {"BELI", "cmd_beli", "BELI", C_PANEL_ALT, C_TEXT},
+      {"GADAI", "cmd_gadai", "GADAI", C_PANEL_ALT, C_TEXT},
+      {"TEBUS", "cmd_tebus", "TEBUS", C_PANEL_ALT, C_TEXT},
+      {"BANGUN", "cmd_bangun", "BANGUN", C_PANEL_ALT, C_TEXT},
+      {"CETAK\nPAPAN", "cmd_cetak_papan", "CETAK_PAPAN", C_PANEL_ALT, C_TEXT},
+      {"CETAK\nAKTA", "cmd_cetak_akta", "CETAK_AKTA", C_PANEL_ALT, C_TEXT},
+      {"CETAK\nPROPERTI", "cmd_cetak_properti", "CETAK_PROPERTI", C_PANEL_ALT,
+       C_TEXT},
       {"AKHIRI\nGILIRAN",
-       "end",
+       "cmd_akhiri",
        "AKHIRI_GILIRAN",
        {106, 22, 22, 255},
        {255, 214, 214, 255}},
   };
 
-  float gap = 8, btnH = 56, startX = cx + 12.0f, btnY = cy + 20.0f;
+  float gap = 8.0f, btnH = 56.0f, startX = cx + 12.0f, btnY = cy + 20.0f;
   int nb = (int)buttons.size();
   float btnW = (CMD_W - 24.0f - (nb - 1) * gap) / (float)nb;
 
   for (int i = 0; i < nb; i++) {
     const CmdBtn &b = buttons[i];
-    Rectangle br = {startX + i * (btnW + gap), btnY, btnW, btnH};
-    bool hov = isHovered(br);
-    DrawRectangleRec({br.x + 3, br.y + 3, br.width, br.height}, C_SHADOW);
-    DrawRectangleRec(br, hov ? tint(b.bg, 15) : b.bg);
-    DrawRectangleLinesEx(br, 2, C_BORDER);
-    drawIcon(b.icon, (int)(br.x + br.width / 2 - 10), (int)br.y + 6, b.fg);
+    Rectangle bRect = {startX + i * (btnW + gap), btnY, btnW, btnH};
+    bool hov = isHovered(bRect);
+
+    DrawRectangleRec({bRect.x + 3, bRect.y + 3, bRect.width, bRect.height},
+                     C_SHADOW);
+    DrawRectangleRec(bRect, hov ? tint(b.bg, 15) : b.bg);
+    DrawRectangleLinesEx(bRect, 2, C_BORDER);
+
+    Texture2D *iconTex = gAssets.get(b.iconKey);
+    if (iconTex) {
+      float iconSz = std::min(22.0f, btnW * 0.5f);
+      Rectangle iconRect = {bRect.x + (bRect.width - iconSz) / 2.0f,
+                            bRect.y + 5.0f, iconSz, iconSz};
+      drawIconInRect(iconTex, iconRect, b.fg);
+    }
+
     std::string l1 = b.label, l2;
     size_t nl = b.label.find('\n');
     if (nl != std::string::npos) {
       l1 = b.label.substr(0, nl);
       l2 = b.label.substr(nl + 1);
     }
-    int fs = 8, tw1 = (int)l1.size() * fs;
+    int fs = 7;
+    int tw1 = fontLoaded ? (int)MeasureTextEx(pixelFont, l1.c_str(), fs, 1.0f).x
+                         : MeasureText(l1.c_str(), fs);
     if (l2.empty()) {
-      drawPixelText(l1, (int)(br.x + (br.width - tw1) / 2),
-                    (int)(br.y + br.height - fs - 8), fs, b.fg);
+      drawPixelText(l1, (int)(bRect.x + (bRect.width - tw1) / 2),
+                    (int)(bRect.y + bRect.height - fs - 5), fs, b.fg);
     } else {
-      int tw2 = (int)l2.size() * fs;
-      drawPixelText(l1, (int)(br.x + (br.width - tw1) / 2),
-                    (int)(br.y + br.height - 2 * fs - 10), fs, b.fg);
-      drawPixelText(l2, (int)(br.x + (br.width - tw2) / 2),
-                    (int)(br.y + br.height - fs - 4), fs, b.fg);
+      int tw2 = fontLoaded
+                    ? (int)MeasureTextEx(pixelFont, l2.c_str(), fs, 1.0f).x
+                    : MeasureText(l2.c_str(), fs);
+      drawPixelText(l1, (int)(bRect.x + (bRect.width - tw1) / 2),
+                    (int)(bRect.y + bRect.height - 2 * fs - 7), fs, b.fg);
+      drawPixelText(l2, (int)(bRect.x + (bRect.width - tw2) / 2),
+                    (int)(bRect.y + bRect.height - fs - 1), fs, b.fg);
     }
+
     if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
       auto it = commandCallbacks.find(b.cmd);
       if (it != commandCallbacks.end())

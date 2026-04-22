@@ -116,8 +116,6 @@ private:
 
   GameState state;
   PopupState popup;
-  Font pixelFont;
-  bool fontLoaded;
 
   std::map<std::string, std::function<void()>> commandCallbacks;
   std::function<void(int)> popupCallback;

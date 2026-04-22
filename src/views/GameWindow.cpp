@@ -220,7 +220,7 @@ static void drawPion(AssetCache &assets, int x, int y, int size,
 }
 
 GameWindow::GameWindow(int width, int height, const std::string &title)
-    : screenW(width), screenH(height), fontLoaded(false) {
+    : screenW(width), screenH(height) {
   boardRect = {(float)BOARD_X, (float)BOARD_Y, (float)BOARD_W, (float)BOARD_H};
   sidebarRect = {(float)SIDE_X, (float)SIDE_Y, (float)SIDE_W, (float)SIDE_H};
   cmdBarRect = {(float)CMD_X, (float)CMD_Y, (float)CMD_W, (float)CMD_H};
@@ -229,20 +229,11 @@ GameWindow::GameWindow(int width, int height, const std::string &title)
 }
 
 GameWindow::~GameWindow() {
-  if (fontLoaded)
-    UnloadFont(pixelFont);
   gAssets.unloadAll();
   CloseWindow();
 }
 
-void GameWindow::init() {
-  if (FileExists("assets/PressStart2P.ttf")) {
-    pixelFont = LoadFontEx("assets/PressStart2P.ttf", 32, nullptr, 0);
-    SetTextureFilter(pixelFont.texture, TEXTURE_FILTER_POINT);
-    fontLoaded = true;
-  }
-  gAssets.loadAll();
-}
+void GameWindow::init() { gAssets.loadAll(); }
 
 void GameWindow::updateState(const GameState &s) { state = s; }
 void GameWindow::showPopup(const PopupState &p) { popup = p; }
@@ -268,11 +259,7 @@ void GameWindow::tick() {
 
 void GameWindow::drawPixelText(const std::string &text, int x, int y, int size,
                                Color color) {
-  if (fontLoaded)
-    DrawTextEx(pixelFont, text.c_str(), {(float)x, (float)y}, (float)size, 1.0f,
-               color);
-  else
-    DrawText(text.c_str(), x, y, size, color);
+  DrawText(text.c_str(), x, y, size, color);
 }
 
 bool GameWindow::isHovered(Rectangle r) const {
@@ -291,10 +278,7 @@ void GameWindow::drawButton(const std::string &label, Rectangle rect, Color bg,
     l1 = label.substr(0, nl);
     l2 = label.substr(nl + 1);
   }
-  auto tw = [&](const std::string &s) {
-    return fontLoaded ? (int)MeasureTextEx(pixelFont, s.c_str(), fs, 1.0f).x
-                      : MeasureText(s.c_str(), fs);
-  };
+  auto tw = [&](const std::string &s) { return MeasureText(s.c_str(), fs); };
   if (l2.empty()) {
     drawPixelText(l1, (int)(rect.x + (rect.width - tw(l1)) / 2),
                   (int)(rect.y + (rect.height - fs) / 2), fs, fg);
@@ -348,27 +332,21 @@ void GameWindow::drawBoard() {
                        {C_BORDER.r, C_BORDER.g, C_BORDER.b, 45});
 
   int lx = (int)(cx + cw / 2), ly = (int)(cy + ch / 2);
-  int w_title = fontLoaded
-                    ? (int)MeasureTextEx(pixelFont, "NIMONSPOLI", 22, 1.0f).x
-                    : MeasureText("NIMONSPOLI", 22);
-  drawPixelText("NIMONSPOLI", lx - w_title / 2, ly - 110, 22,
+  int w_title = MeasureText("pOOPs: NIMONSPOLI", 22);
+  drawPixelText("pOOPs: NIMONSPOLI", lx - w_title / 2, ly - 110, 22,
                 {166, 38, 26, 255});
   drawPixelText("TURN", lx - MeasureText("TURN", 10) / 2, ly - 70, 10,
                 C_TEXT_DIM);
 
   std::string tBig =
       std::to_string(state.currentTurn) + " / " + std::to_string(state.maxTurn);
-  int w_tbig = fontLoaded
-                   ? (int)MeasureTextEx(pixelFont, tBig.c_str(), 38, 1.0f).x
-                   : MeasureText(tBig.c_str(), 38);
+  int w_tbig = MeasureText(tBig.c_str(), 38);
   drawPixelText(tBig, lx - w_tbig / 2, ly - 40, 38, C_TEXT);
 
   if (!state.players.empty()) {
     std::string gir =
         "GILIRAN > " + state.players[state.currentPlayerIndex].username;
-    int w_gir = fontLoaded
-                    ? (int)MeasureTextEx(pixelFont, gir.c_str(), 9, 1.0f).x
-                    : MeasureText(gir.c_str(), 9);
+    int w_gir = MeasureText(gir.c_str(), 9);
     drawPixelText(gir, lx - w_gir / 2, ly + 20, 9, C_TEXT_DIM);
   }
 
@@ -377,10 +355,7 @@ void GameWindow::drawBoard() {
     drawDie(gAssets, lx - 50, ly + 46, 36, d1, C_TEXT);
     drawDie(gAssets, lx + 14, ly + 46, 36, d2, C_TEXT);
     std::string diceSum = "= " + std::to_string(d1 + d2);
-    int w_sum = fontLoaded
-                    ? (int)MeasureTextEx(pixelFont, diceSum.c_str(), 10, 1.0f).x
-                    : MeasureText(diceSum.c_str(), 10);
-    drawPixelText(diceSum, lx - w_sum / 2 + 28, ly + 54, 10, C_TEXT);
+    drawPixelText(diceSum, lx + 50 + 5, ly + 54, 10, C_TEXT);
   }
 
   for (int idx = 1; idx <= 40; idx++) {
@@ -439,10 +414,8 @@ void GameWindow::drawTile(const TileInfo &tile, Rectangle rect) {
     int mx = (int)(rect.x + rect.width / 2);
     int my = (int)(rect.y + rect.height / 2);
     if (l1[0]) {
-      int w_l1 = fontLoaded ? (int)MeasureTextEx(pixelFont, l1, 8, 1.0f).x
-                            : MeasureText(l1, 8);
-      int w_l2 = fontLoaded ? (int)MeasureTextEx(pixelFont, l2, 8, 1.0f).x
-                            : MeasureText(l2, 8);
+      int w_l1 = MeasureText(l1, 8);
+      int w_l2 = MeasureText(l2, 8);
       drawPixelText(l1, mx - w_l1 / 2, my - 16, 8, col);
       drawPixelText(l2, mx - w_l2 / 2, my + 2, 8, col);
     }
@@ -646,9 +619,7 @@ void GameWindow::drawPlayerList() {
     drawPixelText("P" + std::to_string(i + 1) + " " + truncate(p.username, 8),
                   sx + 44, ry + 11, 10, nc);
     std::string ms = formatMoney(p.money);
-    int ms_w = fontLoaded
-                   ? (int)MeasureTextEx(pixelFont, ms.c_str(), 10, 1.0f).x
-                   : MeasureText(ms.c_str(), 10);
+    int ms_w = MeasureText(ms.c_str(), 10);
     drawPixelText(ms, sx + sw - 24 - ms_w - 44, ry + 11, 10,
                   isBankrupt ? Color{140, 125, 100, 255} : C_GOOD);
     drawPixelText("@" + std::to_string(p.position), sx + sw - 42, ry + 13, 8,
@@ -747,7 +718,7 @@ void GameWindow::drawSidebar() {
       sw = (int)sidebarRect.width;
 
   DrawRectangle(sx, sy, sw, 64, C_BTN_BG);
-  drawPixelText("NIMONSPOLI", sx + 14, sy + 12, 16, C_BTN_TEXT);
+  drawPixelText("pOOPs: NIMONSPOLI", sx + 14, sy + 12, 16, C_BTN_TEXT);
   drawPixelText("TURN " + std::to_string(state.currentTurn) + " / " +
                     std::to_string(state.maxTurn),
                 sx + 14, sy + 40, 9, {216, 200, 154, 255});
@@ -868,10 +839,11 @@ void GameWindow::drawCommandBar() {
     DrawRectangleLinesEx(bRect, 2, C_BORDER);
 
     Texture2D *iconTex = gAssets.get(b.iconKey);
+    float iconY = bRect.y + 5.0f;
     if (iconTex) {
-      float iconSz = std::min(22.0f, btnW * 0.5f);
-      Rectangle iconRect = {bRect.x + (bRect.width - iconSz) / 2.0f,
-                            bRect.y + 5.0f, iconSz, iconSz};
+      float iconSz = std::min(20.0f, btnW * 0.5f);
+      Rectangle iconRect = {bRect.x + (bRect.width - iconSz) / 2.0f, iconY,
+                            iconSz, iconSz};
       drawIconInRect(iconTex, iconRect, b.fg);
     }
 
@@ -881,20 +853,17 @@ void GameWindow::drawCommandBar() {
       l1 = b.label.substr(0, nl);
       l2 = b.label.substr(nl + 1);
     }
-    int fs = 7;
-    int tw1 = fontLoaded ? (int)MeasureTextEx(pixelFont, l1.c_str(), fs, 1.0f).x
-                         : MeasureText(l1.c_str(), fs);
+    int fs = 6;
+    int tw1 = MeasureText(l1.c_str(), fs);
     if (l2.empty()) {
       drawPixelText(l1, (int)(bRect.x + (bRect.width - tw1) / 2),
-                    (int)(bRect.y + bRect.height - fs - 5), fs, b.fg);
+                    (int)(bRect.y + 36), fs, b.fg);
     } else {
-      int tw2 = fontLoaded
-                    ? (int)MeasureTextEx(pixelFont, l2.c_str(), fs, 1.0f).x
-                    : MeasureText(l2.c_str(), fs);
+      int tw2 = MeasureText(l2.c_str(), fs);
       drawPixelText(l1, (int)(bRect.x + (bRect.width - tw1) / 2),
-                    (int)(bRect.y + bRect.height - 2 * fs - 7), fs, b.fg);
+                    (int)(bRect.y + 30), fs, b.fg);
       drawPixelText(l2, (int)(bRect.x + (bRect.width - tw2) / 2),
-                    (int)(bRect.y + bRect.height - fs - 1), fs, b.fg);
+                    (int)(bRect.y + 39), fs, b.fg);
     }
 
     if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {

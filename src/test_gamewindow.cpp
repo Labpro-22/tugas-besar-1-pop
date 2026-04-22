@@ -230,7 +230,7 @@ int main() {
   std::cout << "=== GameWindow Test Driver ===" << std::endl;
   std::cout << "Creating GameWindow with dummy data..." << std::endl;
 
-  GameWindow window(1280, 800, "Nimonspoli - Test Driver");
+  GameWindow window(1280, 800, "pOOPs: NIMONSPOLI - Test Driver");
   window.init();
 
   GameState dummyState = createDummyGameState();

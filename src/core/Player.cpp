@@ -82,7 +82,14 @@ void Player::setHasUsedCardThisTurn(bool used) { hasUsedCardThisTurn = used; }
 void Player::setActiveDiscountPercent(int percent) { activeDiscount = percent; }
 
 int Player::getWealth() const {
-    //TODO : nunggu manu
+    int totalWealth = money;
+    
+    for (PropertyTile* prop : ownedProperties) {
+        totalWealth += prop->getPrice();
+        totalWealth += prop->calcValue();
+    }
+
+    return totalWealth;
 }
 
 Player& Player::operator-=(int amount) {

@@ -3,19 +3,17 @@
 PropertyTile:: PropertyTile(int index, const std::string& code, const std::string& name, int buyPrice, int mortgageValue)
 : Tile(index,code,name), price(buyPrice), mortgageValue(mortgageValue), ownerId(-1),status(0){}
 
-void PropertyTile:: onLanded(Player& player){
-    if(this->status == 1){
-        bool found = false;
-        for(auto v : player.getOwnedProperties()){
-            if(v->ownerId == this->ownerId){
-                found = true;
-                break;
-            }
-        }
-        if(!found){
-            payRent();
+EffectType PropertyTile:: onLanded(Player& player){
+    if (status == 0) {
+        return EffectType::OFFER_BUY;
+    } else if (status == 1) {
+        if (ownerId == player.getId()) {
+            return EffectType::ALREADY_OWNED_SELF;
+        } else {
+            return EffectType::PAY_RENT;
         }
     }
+    return EffectType::NONE;
 }
 
 void PropertyTile:: payRent(){
@@ -75,25 +73,18 @@ int StreetTile:: calcRent(int diceRoll) const{
 
 }
 
-void StreetTile:: onLanded(Player& player){
-    if(this->status == 0){
-        bool beli = false;
-        // TODO : Menampilkan akta kepemilikan
-        // TODO : Menawarkan kepada pemain
-        if(beli){
-            if(player.getMoney() >= this->price){
-                player -= price;
-                this->status = 1;
-            }
-        }
-        else{
-            // TODO : Masuk ke sistem lelang
+EffectType StreetTile::onLanded(Player& player) {
+    if (this->status == 0) {
+        return EffectType::OFFER_BUY; 
+    } else if (this->status == 1) {
+        if (this->ownerId == player.getId()) {
+            return EffectType::ALREADY_OWNED_SELF;
+        } else {
+            return EffectType::PAY_RENT;
         }
     }
-    else if(this->status == 1){
-        // TODO : Jika ownerId != IdPlayer, Sewa dilakukan secara otomatis.
-    }
-    
+    // Status 2 = Digadaikan
+    return EffectType::NONE;
 }
 
 void StreetTile:: sellTobank(Player& owner){
@@ -175,25 +166,17 @@ int RailroadTile::calcValue() const{
     return getmortgageValue();
 }
 
-void RailroadTile::onLanded(Player& player){
-    if (status == 0) {
-        // BANK - kepemilikan otomatis tanpa beli/lelang
-        status  = 1;
- 
-    } else if (status == 1) {
-        if (ownerId != player.getId()) {
-            int rent = calcRent();
-            if (player.getMoney() >= rent) {
-                    player -= rent;
-                    // TODO: tambahkan ke saldo owner lewat GameLogic
-            } else {
-                // TODO: panggil GameLogic::handleBankruptcy(player, ownerId)
-            }
+EffectType RailroadTile::onLanded(Player& player) {
+    if (this->status == 0) {
+        return EffectType::AUTO_ACQUIRE;
+    } else if (this->status == 1) {
+        if (this->ownerId == player.getId()) {
+            return EffectType::ALREADY_OWNED_SELF;
+        } else {
+            return EffectType::PAY_RENT;
         }
- 
-    } else if (status == 2) {
-        // properti sedang digadaikan
     }
+    return EffectType::NONE;
 }
 
 int RailroadTile::getRailroadOwnedCount() const{
@@ -225,25 +208,17 @@ int UtilityTile::calcValue() const{
     return getmortgageValue();
 } 
 
-void UtilityTile:: onLanded(Player& player){
-    if(status == 0){
-        status = 1;
-    }
-    else if(status == 1){
-        if(ownerId != player.getId()){
-            int rent = calcRent(lastDiceRoll);
-            if(player.getMoney() >= rent){
-                player -= rent;
-                // TODO : tambahkan saldo owner
-            }
-            else{
-                // Todo : Bangkrut?;
-            }
+EffectType UtilityTile::onLanded(Player& player) {
+    if (this->status == 0) {
+        return EffectType::AUTO_ACQUIRE;
+    } else if (this->status == 1) {
+        if (this->ownerId == player.getId()) {
+            return EffectType::ALREADY_OWNED_SELF;
+        } else {
+            return EffectType::PAY_RENT;
         }
     }
-    else{
-        // lagi digadaikan, ga terjadi apa "
-    }
+    return EffectType::NONE;
 }
 
 void UtilityTile::setUtilityOwnedCount(int count){

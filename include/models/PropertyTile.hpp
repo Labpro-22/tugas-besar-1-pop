@@ -3,6 +3,34 @@
 
 #include "../models/Tile.hpp"
 #include <string>
+enum class EffectType {
+    NONE,               // Tidak ada efek (FreeParkingTile)
+ 
+    // --- Properti ---
+    OFFER_BUY,          // Tawarkan pembelian street ke pemain aktif
+    AUTO_ACQUIRE,       // Kepemilikan otomatis tanpa beli (Railroad / Utility)
+    PAY_RENT,           // Pemain harus bayar sewa ke owner
+    ALREADY_OWNED_SELF, // Pemain mendarat di propertinya sendiri, tidak ada aksi
+ 
+    // --- Pajak ---
+    PAY_TAX_FLAT,       // Bayar pajak flat langsung (PBM)
+    PAY_TAX_CHOICE,     // Pemain pilih flat atau persentase (PPH)
+ 
+    // --- Kartu ---
+    DRAW_CHANCE,        // Ambil kartu Kesempatan
+    DRAW_COMMUNITY,     // Ambil kartu Dana Umum
+ 
+    // --- Festival ---
+    FESTIVAL_TRIGGER,   // Pemain pilih properti untuk efek festival
+ 
+    // --- Spesial ---
+    AWARD_SALARY,       // Berikan gaji Go ke pemain
+    SEND_TO_JAIL,       // Pindahkan pemain ke penjara
+    JAIL_TURN,          // Pemain sedang di penjara, proses giliran penjara
+    JUST_VISITING,      // Pemain mampir di penjara, tidak ada aksi
+    START_AUCTION,      // Mulai lelang properti ini
+};
+
 
 class PropertyTile : public Tile {
 
@@ -16,7 +44,7 @@ public:
     PropertyTile(int index, const std::string& code, const std::string& name,
                  int buyPrice, int mortgageValue);
     virtual ~PropertyTile();
-    void onLanded(Player& player) override;
+    EffectType onLanded(Player& player) override;
 
     virtual int calcRent(int diceRoll = 0) const = 0;
     virtual int calcValue() const = 0;
@@ -43,7 +71,7 @@ public:
  
     int calcRent(int diceRoll = 0) const override;
     int calcValue() const override;
-    void onLanded(Player& player) override;
+    EffectType onLanded(Player& player) override;
  
     // jual properti ke bank
     void sellTobank(Player& owner) override;
@@ -91,7 +119,7 @@ public:
 
     int calcRent(int diceRoll = 0) const override;
     int calcValue() const override;
-    void onLanded(Player& player) override;
+    EffectType onLanded(Player& player) override;
     int getRailroadOwnedCount() const;
     void setrailroadOwnedCount(int count);
  
@@ -113,7 +141,7 @@ public:
     //dikalikan dengan faktor pengali yang bergantung pada jumlah petak Utility yang dimiliki oleh pemiliknya            
     int calcRent(int diceRoll = 0) const override;
     int calcValue() const override;
-    void onLanded(Player& player) override;
+    EffectType onLanded(Player& player) override;
     void setUtilityOwnedCount(int count);
     void setLastDiceRoll(int dice);
     int getUtilityOwnedCount() const;

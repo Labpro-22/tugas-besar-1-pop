@@ -29,6 +29,12 @@ enum class EffectType {
     JAIL_TURN,          // Pemain sedang di penjara, proses giliran penjara
     JUST_VISITING,      // Pemain mampir di penjara, tidak ada aksi
     START_AUCTION,      // Mulai lelang properti ini
+    
+    // --- Jail Outcomes ---
+    JAIL_PAID_FINE,             // Pemain berhasil bayar denda dan bebas
+    JAIL_ROLLED_DOUBLE,         // Pemain roll double dan bebas
+    JAIL_ROLLED_NO_DOUBLE,      // Pemain roll tapi tidak double, tetap di jail
+    JAIL_FORCED_BANKRUPTCY,     // Pemain bangkrut karena tidak bisa bayar denda
 };
 
 

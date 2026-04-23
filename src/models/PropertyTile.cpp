@@ -128,14 +128,16 @@ int StreetTile::getHouseCost() const{return this->houseCost;}
 
 int StreetTile::getHotelCost() const{return this->hotelCost;}
 
-int StreetTile::getRentLevel() const {this->rentLevel;}
+int StreetTile::getRentLevel() const {
+    return this->rentLevel;
+}
 
 string StreetTile::getColorGroup() const {return this->colorGroup;}
 
 void StreetTile::setMonopolized(bool val){this->isMonopolized = val;}
 
 int StreetTile::calcBuildingResaleValue() const{
-    return 0.5 * calcValue();
+    return getPrice() + 0.5 * calcValue();
 }
 
 int StreetTile::calcValue() const {
@@ -226,7 +228,7 @@ void UtilityTile::setUtilityOwnedCount(int count){
 }
 
 void UtilityTile::setLastDiceRoll(int dice){
-    this->utilityOwnedCount = dice;
+    this->lastDiceRoll = dice;
 }
 
 int UtilityTile::getUtilityOwnedCount() const{

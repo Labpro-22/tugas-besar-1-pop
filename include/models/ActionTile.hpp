@@ -11,24 +11,24 @@ public:
     ActionTile(int index, const std::string& code, const std::string& name);
  
     // onLanded mendelegasikan ke triggerEffect — subclass tidak perlu override keduanya
-    void onLanded(Player& player);
+    EffectType onLanded(Player& player);
  
     // Pure virtual — setiap ActionTile punya efek berbeda
-    virtual void triggerEffect(Player& player) = 0;
+    virtual EffectType triggerEffect(Player& player) = 0;
 };
 
 
 class CardTile : public ActionTile {
 public:
     CardTile(int index, const std::string& code, const std::string& name,
-             string type);
+             const std::string& type);
  
-    void triggerEffect(Player& player) override;
+    EffectType triggerEffect(Player& player) override;
  
-    string getCardType() const;
+    std::string getCardType() const;
  
 private:
-    string cardType; // 1 : Kartu Kesempatan dan 2 : Dana Umum
+    std::string cardType; // 1 : Kartu Kesempatan dan 2 : Dana Umum
  
     void applyChanceCard(Player& player);
     void applyCommunityCard(Player& player);
@@ -40,13 +40,13 @@ private:
 class TaxTile : public ActionTile {
 public:
     TaxTile(int index, const std::string& code, const std::string& name,
-            string type,
+            const std::string& type,
             int flatAmount,
             double percentageRate = 0.0);
  
-    void triggerEffect(Player& player) override;
+    EffectType triggerEffect(Player& player) override;
  
-    string getTaxType() const ;
+    std::string getTaxType() const;
     int getFlatAmount() const;
     double getPercentageRate() const;
 
@@ -60,7 +60,7 @@ public:
     int computeNetWorth(const Player& player) const;
  
 private:
-    string taxType;
+    std::string taxType;
     int     flatAmount;
     double  percentageRate;
 };
@@ -70,7 +70,7 @@ class FestivalTile : public ActionTile {
 public:
     FestivalTile(int index, const std::string& code, const std::string& name);
  
-    void triggerEffect(Player& player) override;
+    EffectType triggerEffect(Player& player) override;
     void applyFestivalToProperty(Player& player);
 };
 
@@ -81,13 +81,13 @@ public:
     SpecialTile(int index, const std::string& code, const std::string& name);
  
     // onLanded mendelegasikan ke handleArrival — konsisten dengan ActionTile
-    void onLanded(Player& player) ;
+    EffectType onLanded(Player& player) ;
  
     // Pure virtual — setiap petak spesial punya logika kedatangan unik
-    virtual void handleArrival(Player& player) = 0; // fungsi khusus SpecialTile Class mirip dengan onLanded
+    virtual EffectType handleArrival(Player& player) = 0; // fungsi khusus SpecialTile Class mirip dengan onLanded
 
-    void triggerEffect(Player& player) override {
-        handleArrival(player);
+    EffectType triggerEffect(Player& player) override {
+        return handleArrival(player);
     }
  
 };
@@ -97,15 +97,12 @@ class GoTile : public SpecialTile{
         GoTile(int index, const std::string& code, const std::string& name,
             int salary);
     
-        void handleArrival(Player& player) override;
-
-        // Dipanggil khusus ketika melewati petak, bukan berhenti /
-        void awardPassSalary(Player& player) const;
+        EffectType handleArrival(Player& player) override;
+        void awardSalary(Player& player) const;
         int getSalary() const;
  
     private:
         int salary;
-        void awardSalary(Player& player) const;
 
 };
 
@@ -114,16 +111,18 @@ public:
     JailTile(int index, const std::string& code, const std::string& name,
              int fine);
  
-    void handleArrival(Player& player);
+    EffectType handleArrival(Player& player);
 
     // Kirim pemain ke penjara (dipanggil GoToJailTile dan kartu "Masuk Penjara
     void imprisonPlayer(Player& player);
     /// Keluarkan pemain dari penjara (setelah bayar/double/kartu bebas)
     void releasePlayer(Player& player);
     int getFine() const;
-    void processTurnInJail(Player& player);
-    void handlePayFine(Player& player);
-    void handleRollForDouble(Player& player);
+    
+    // Proses turn di penjara dan return EffectType outcome
+    EffectType processTurnInJail(Player& player);
+    EffectType handlePayFine(Player& player);
+    EffectType handleRollForDouble(Player& player);
 private:
     int fine;
 
@@ -132,13 +131,13 @@ private:
 class FreeParkingTile : public SpecialTile {
 public:
     FreeParkingTile(int index, const std::string& code, const std::string& name);
-    void handleArrival(Player& player) override;
+    EffectType handleArrival(Player& player) override;
 };
  
 class GoToJailTile : public SpecialTile {
 public:
     GoToJailTile(int index, const std::string& code, const std::string& name);
-    void handleArrival(Player& player) override;
+    EffectType handleArrival(Player& player) override;
  
     // Dipanggil Board setelah semua tile diinisialisasi
     void setJailTile(JailTile* jail);

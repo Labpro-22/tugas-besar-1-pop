@@ -354,6 +354,26 @@ void GameEngine::handleBankruptcy(Player* bankruptPlayer, Player* creditor) {
               << (creditor ? "diserahkan ke " + creditor->getUsername() : "disita oleh Bank") << ".\n";
 }
 
+void GameEngine::sellBuilding(const std::string& colorGroup){
+    vector<Tile*> curr = board->getTileByColorGroup(colorGroup);
+    Player* currentPlayer = players[currentTurnIdx];
+    cout << "Daftar bangunan di Color Group [" << colorGroup << "]" << endl;
+    int i = 1;
+    for(auto v : curr){
+        int level = v->getRentLevel();
+        cout << i << ". " << v->getName() << "(" << v->getKode() << ") - ";
+        if(level <= 4) cout << level << " rumah";
+        else cout << "Hotel";
+        cout << " -> Nilai jual bangunan: " << v->calcValue();
+        cout << endl;
+    }
+    for(auto v : curr){
+        v->demolish();
+        // TODO : handle perpindahan duit
+        players[v->getOwnerId()] += v->calcValue();
+    }
+}
+
 void GameEngine::buyBuilding(const std::string& propertyCode) {
     Player* activePlayer = players[currentTurnIdx];
     Tile* tile = board->getTileByKode(propertyCode);

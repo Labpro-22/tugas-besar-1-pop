@@ -74,5 +74,13 @@ enum class LogActionType { // Plis ini beda sama type" yang di class lain yak, i
 std::string actionTypeToString(LogActionType type);
 LogActionType stringToActionType(const std::string& str);
 
+enum class SkillCardEffect {
+    NONE, MOVE, DISCOUNT, SHIELD, TELEPORT, LASSO, DEMOLITION
+};
 
+enum class ActionCardEffect {
+    NONE,
+    CHANCE_NEAREST_STATION, CHANCE_MOVE_BACK_3, CHANCE_GO_TO_JAIL,
+    COMMUNITY_BIRTHDAY, COMMUNITY_DOCTOR, COMMUNITY_ELECTION
+};
 #endif

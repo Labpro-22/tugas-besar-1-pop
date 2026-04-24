@@ -1,92 +1,73 @@
 #ifndef CARD_HPP
 #define CARD_HPP
 
-
 #include "core/Enums.hpp"
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <random>
 #include <stdexcept>
+class Player;
+class GameEngine;
 
 
 template <class T>
 class CardDeck {
 private:
-    std::vector<T*> deck;        // kartu yang belum ditarik
-    std::vector<T*> discardPile; // kartu yang sudah dipakai
+    std::vector<T*> deck;
+    std::vector<T*> discardPile;
 
 public:
-    
-        
     CardDeck() = default;
-    ~CardDeck(){
+
+    ~CardDeck() {
         for (T* card : deck)        delete card;
         for (T* card : discardPile) delete card;
         deck.clear();
         discardPile.clear();
     }
-    
 
-    void addCard(T* card){
+    void addCard(T* card) {
         if (card) deck.push_back(card);
     }
-    void shuffle(){
+
+    void shuffle() {
         std::random_device rd;
         std::mt19937 rng(rd());
         std::shuffle(deck.begin(), deck.end(), rng);
     }
 
-    // Ambil kartu teratas dari deck.
-    T* draw(){
-         if (deck.empty()) {
-            reshuffleDiscard();
-        }
-        if (deck.empty()) {
-            throw std::runtime_error("CardDeck: deck dan discard pile keduanya kosong.");
-        }
+    T* draw() {
+        if (deck.empty()) reshuffleDiscard();
+        if (deck.empty()) throw std::runtime_error("CardDeck: deck dan discard pile keduanya kosong.");
         T* card = deck.back();
         deck.pop_back();
         return card;
     }
 
-    // Masukkan kartu ke discard pile abis dipake.
-    void discard(T* card){
-         if (card) discardPile.push_back(card);
+    void discard(T* card) {
+        if (card) discardPile.push_back(card);
     }
 
-    // Kocok ulang discard pile menjadi deck baru (deck lama harus sudah kosong).
-    void reshuffleDiscard(){
-        for (T* card : discardPile) {
-            deck.push_back(card);
-        }
+    void reshuffleDiscard() {
+        for (T* card : discardPile) deck.push_back(card);
         discardPile.clear();
         shuffle();
     }
 
-   
+    bool isEmpty()     const { return deck.empty(); }
+    int  size()        const { return static_cast<int>(deck.size()); }
+    int  discardSize() const { return static_cast<int>(discardPile.size()); }
 
-    bool isEmpty() const {
-        return deck.empty(); }
-    int  size() const { 
-        return static_cast<int>(deck.size()); }
-    int  discardSize() const {
-        return static_cast<int>(discardPile.size()); }
-
-    // Akses read-only ke isi deck (dipakai SaveLoadManager)
     const std::vector<T*>& getDeck()        const { return deck; }
     const std::vector<T*>& getDiscardPile() const { return discardPile; }
 };
 
 
-
-
-class Player;
-class GameEngine;
 class SkillCard {
 protected:
-    std::string cardName;
-    std::string cardDescription;
+    std::string   cardName;
+    std::string   cardDescription;
     SkillCardType skillType;
 
 public:
@@ -94,13 +75,16 @@ public:
               const std::string& description,
               SkillCardType type);
     virtual ~SkillCard();
-    virtual void use(Player& player, GameEngine& engine);
 
-    std::string  getCardName() const ;
-    std::string  getCardDescription() const;
-    SkillCardType getSkillType()const ;
+    virtual SkillCardEffect use(Player& player, GameEngine& engine);
+
+    std::string   getCardName()        const;
+    std::string   getCardDescription() const;
+    SkillCardType getSkillType()        const;
+
     virtual std::string getValueString() const = 0;
 };
+
 
 
 class MoveCard : public SkillCard {
@@ -111,10 +95,12 @@ public:
     MoveCard();
     explicit MoveCard(int savedSteps);
 
-    int  getSteps() const;
-    void use(Player& player, GameEngine& engine) override;
+    int getSteps() const;
+
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
+
 
 
 class DiscountCard : public SkillCard {
@@ -129,7 +115,8 @@ public:
     int  getDiscountPercent() const;
     int  getRemainingTurns()  const;
     void decrementTurns();
-    void use(Player& player, GameEngine& engine) override;
+
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
 
@@ -137,15 +124,14 @@ public:
 class ShieldCard : public SkillCard {
 public:
     ShieldCard();
-    void use(Player& player, GameEngine& engine) override;
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
-
 
 class TeleportCard : public SkillCard {
 public:
     TeleportCard();
-    void use(Player& player, GameEngine& engine) override;
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
 
@@ -153,18 +139,18 @@ public:
 class LassoCard : public SkillCard {
 public:
     LassoCard();
-    void use(Player& player, GameEngine& engine) override;
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
+
 
 
 class DemolitionCard : public SkillCard {
 public:
     DemolitionCard();
-    void use(Player& player, GameEngine& engine) override;
+    SkillCardEffect use(Player& player, GameEngine& engine) override;
     std::string getValueString() const override;
 };
-
 
 
 class ActionCard {
@@ -174,11 +160,11 @@ protected:
 
 public:
     ActionCard(const std::string& name, const std::string& description);
+    virtual ~ActionCard();
 
-    ~ActionCard();
-    virtual void execute(Player& player, GameEngine& engine);
+    virtual ActionCardEffect execute(Player& player, GameEngine& engine);
 
-    std::string getCardName() const ;
+    std::string getCardName()        const;
     std::string getCardDescription() const;
 };
 
@@ -188,11 +174,10 @@ protected:
     ChanceCardType type;
 
 public:
+    explicit ChanceCard(ChanceCardType cardType);
 
-    ChanceCard(ChanceCardType cardType);
-
-    ChanceCardType getType() const;
-    void execute(Player& player, GameEngine& engine) override;
+    ChanceCardType   getType() const;
+    ActionCardEffect execute(Player& player, GameEngine& engine) override;
 };
 
 
@@ -201,9 +186,10 @@ protected:
     CommunityChestCardType type;
 
 public:
-    CommunityChestCard(CommunityChestCardType cardType);
+    explicit CommunityChestCard(CommunityChestCardType cardType);
+
     CommunityChestCardType getType() const;
-    void execute(Player& player, GameEngine& engine) override;
+    ActionCardEffect execute(Player& player, GameEngine& engine) override;
 };
 
-#endif 
+#endif

@@ -19,11 +19,13 @@ std::string actionTypeToString(LogActionType type) {
         case LogActionType::SAVE: return "SAVE";
         case LogActionType::LOAD: return "LOAD";
         case LogActionType::DOUBLE_ROLL: return "DOUBLE_ROLL";
+        case LogActionType::GO: return "GO";
         default: return "UNKNOWN";
     }
 }
 
 LogActionType stringToActionType(const std::string& str) {
+    if (str == "GO") return LogActionType::GO;
     if (str == "ROLL") return LogActionType::ROLL;
     if (str == "BUY") return LogActionType::BUY;
     if (str == "RENT") return LogActionType::RENT;

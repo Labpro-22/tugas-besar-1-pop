@@ -113,7 +113,7 @@ void GameEngine::rollDice(int d1, int d2) {
         if (go) {
             go->awardSalary(*activePlayer);
             std::cout << "[INFO] Anda melewati petak GO! Menerima gaji sebesar Rp" << go->getSalary() << ".\n";
-            if (logger) logger->logEvent(roundCount, activePlayer->getUsername(), LogActionType::UNKNOWN, "Lewat GO");
+            if (logger) logger->logEvent(roundCount, activePlayer->getUsername(), LogActionType::GOTILE, "Lewat GO");
         }
     }
     

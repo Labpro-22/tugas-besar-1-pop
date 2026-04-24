@@ -68,7 +68,7 @@ enum class GameErrorCode {
 enum class LogActionType { // Plis ini beda sama type" yang di class lain yak, ini khusus event yang sedang terjadi aja bukan semacam state suatu objek
     ROLL, BUY, RENT, TAX, BUILD, SELL, MORTGAGE, 
     UNMORTGAGE, CARD, RAILROAD, UTILITY, AUCTION, 
-    FESTIVAL, BANKRUPT, SAVE, LOAD, DOUBLE_ROLL, UNKNOWN
+    FESTIVAL, BANKRUPT, SAVE, LOAD, DOUBLE_ROLL, GO, UNKNOWN
 };
 
 std::string actionTypeToString(LogActionType type);

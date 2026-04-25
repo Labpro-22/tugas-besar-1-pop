@@ -70,6 +70,9 @@ class GameEngine {
     bool hasDiceRolled() const { return diceRolled; }
     bool isTurnEnded() const { return turnEnded; }
     const std::vector<SkillCard *> &getSkillDeckCards() const;
+
+    void setCurrentTurnIdx(int idx) { currentTurnIdx = idx; }
+    void setRoundCount(int count) { roundCount = count; }
 };
 
 #endif

@@ -52,6 +52,10 @@ class Player {
 
     void setHasUsedCardThisTurn(bool used);
     void setActiveDiscountPercent(int percent);
+    void setMoney(int amount);
+    void setPosition(int pos);
+    void setStatus(PlayerStatus s);
+    void setJailTurnsLeft(int turns);
 
     void addCard(SkillCard *card);
     void removeCard(int index);

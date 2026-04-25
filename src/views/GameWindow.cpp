@@ -150,6 +150,7 @@ struct AssetCache {
     }
 };
 static AssetCache gAssets;
+static int popupScrollOffset = 0; // scroll offset for list popups
 
 static void drawIconInRect(Texture2D *tex, Rectangle rect, Color tintColor) {
     if (!tex)
@@ -239,24 +240,81 @@ GameWindow::~GameWindow() {
 void GameWindow::init() { gAssets.loadAll(); }
 
 void GameWindow::updateState(const GameState &s) { state = s; }
-void GameWindow::showPopup(const PopupState &p) { popup = p; }
+void GameWindow::showPopup(const PopupState &p) {
+    popup = p;
+    popupScrollOffset = 0;
+}
 void GameWindow::closePopup() { popup.type = PopupType::NONE; }
-bool GameWindow::isRunning() const { return !WindowShouldClose(); }
+bool GameWindow::isRunning() const {
+    return !WindowShouldClose() && !exitRequested;
+}
 void GameWindow::onCommand(const std::string &n, std::function<void()> cb) {
     commandCallbacks[n] = cb;
 }
 void GameWindow::onPopupOption(std::function<void(int)> cb) {
     popupCallback = cb;
 }
+void GameWindow::setScreen(AppScreen screen) { currentScreen = screen; }
+AppScreen GameWindow::getScreen() const { return currentScreen; }
+void GameWindow::onNewGame(
+    std::function<void(int, std::vector<std::string>)> cb) {
+    newGameCallback = cb;
+}
+void GameWindow::onLoadGame(std::function<void(std::string)> cb) {
+    loadGameCallback = cb;
+}
+void GameWindow::onSaveGame(std::function<void(std::string)> cb) {
+    saveGameCallback = cb;
+}
+void GameWindow::onExitGame(std::function<void()> cb) {
+    exitGameCallback = cb;
+}
+void GameWindow::showTextInput(const std::string &title,
+                               const std::string &hint, bool isSave) {
+    textInput.active = true;
+    textInput.isSave = isSave;
+    textInput.buffer = "";
+    textInput.title = title;
+    textInput.hint = hint;
+    textInput.errorMsg = "";
+}
+void GameWindow::showPropertyInfo(const std::string &title,
+                                  const std::vector<std::string> &lines) {
+    propInfo.active = true;
+    propInfo.justOpened = true;
+    propInfo.title = title;
+    propInfo.lines = lines;
+}
+void GameWindow::closePropertyInfo() { propInfo.active = false; }
+void GameWindow::setTextInputError(const std::string &msg) {
+    textInput.errorMsg = msg;
+}
 
 void GameWindow::tick() {
     BeginDrawing();
     ClearBackground(C_BG);
-    drawBoard();
-    drawSidebar();
-    drawCommandBar();
-    if (popup.type != PopupType::NONE)
-        drawPopup();
+
+    switch (currentScreen) {
+    case AppScreen::MAIN_MENU:
+        drawMainMenu();
+        break;
+    case AppScreen::PLAYER_SETUP:
+        drawPlayerSetup();
+        break;
+    case AppScreen::PLAYING:
+        drawBoard();
+        drawSidebar();
+        drawCommandBar();
+        if (popup.type != PopupType::NONE)
+            drawPopup();
+        if (propInfo.active)
+            drawPropertyInfoOverlay();
+        break;
+    }
+
+    if (textInput.active)
+        drawTextInputOverlay();
+
     EndDrawing();
 }
 
@@ -298,6 +356,371 @@ Color GameWindow::getTileColor(const std::string &c) const {
     return colorGroupToColor(c);
 }
 Color GameWindow::getPlayerColor(int i) const { return playerIndexToColor(i); }
+
+// ---- Keyboard text input helper ----
+
+void GameWindow::handleKeyboardTextInput(std::string &buffer, int maxLen) {
+    int key = GetCharPressed();
+    while (key > 0) {
+        if (key >= 32 && key <= 125 && (int)buffer.size() < maxLen) {
+            buffer += (char)key;
+        }
+        key = GetCharPressed();
+    }
+    if (IsKeyPressed(KEY_BACKSPACE) && !buffer.empty()) {
+        buffer.pop_back();
+    }
+}
+
+// ---- MAIN MENU SCREEN ----
+
+void GameWindow::drawMainMenu() {
+    DrawRectangle(0, 0, screenW, screenH, C_BOARD_FELT);
+    DrawRectangle(0, 0, screenW, 12, C_BTN_BG);
+    DrawRectangle(0, screenH - 12, screenW, 12, C_BTN_BG);
+    DrawRectangle(0, 0, 12, screenH, C_BTN_BG);
+    DrawRectangle(screenW - 12, 0, 12, screenH, C_BTN_BG);
+
+    float cw = 500.0f, ch = 460.0f;
+    float cx = (screenW - cw) / 2.0f;
+    float cy = (screenH - ch) / 2.0f;
+
+    DrawRectangleRec({cx + 10, cy + 10, cw, ch}, {0, 0, 0, 100});
+    DrawRectangleRec({cx, cy, cw, ch}, C_PANEL);
+    DrawRectangleLinesEx({cx, cy, cw, ch}, 4, C_BORDER);
+
+    DrawRectangle((int)cx, (int)cy, (int)cw, 88, C_BTN_BG);
+    DrawRectangleLinesEx({cx, cy, cw, 88.0f}, 2, C_BORDER);
+    DrawRectangle((int)cx, (int)cy, (int)cw, 8, {166, 38, 26, 255});
+
+    const char *title1 = "pOOPs: NIMONSPOLI";
+    int tw1 = MeasureText(title1, 26);
+    drawPixelText(title1, (int)(cx + (cw - tw1) / 2), (int)cy + 18, 26, C_BTN_TEXT);
+
+    const char *title2 = "Board Game Monopoli ala Indonesia!";
+    int tw2 = MeasureText(title2, 10);
+    drawPixelText(title2, (int)(cx + (cw - tw2) / 2), (int)cy + 58, 10,
+                  {216, 200, 154, 255});
+    drawPixelText("v1.0", (int)(cx + cw - 48), (int)cy + 10, 8, {122, 104, 64, 255});
+
+    float btnW = cw - 80.0f;
+    float btnX = cx + 40.0f;
+    float btnH = 54.0f;
+
+    // NEW GAME
+    float y1 = cy + 110;
+    Rectangle r1 = {btnX, y1, btnW, btnH};
+    bool h1 = isHovered(r1);
+    DrawRectangleRec({r1.x + 5, r1.y + 5, r1.width, r1.height}, {0, 0, 0, 80});
+    DrawRectangleRec(r1, h1 ? tint(C_ACCENT, 25) : C_ACCENT);
+    DrawRectangleLinesEx(r1, 3, C_BORDER);
+    const char *l1 = "MULAI PERMAINAN BARU";
+    int lw1 = MeasureText(l1, 14);
+    drawPixelText(l1, (int)(r1.x + (r1.width - lw1) / 2),
+                  (int)(r1.y + (r1.height - 14) / 2), 14, WHITE);
+    if (h1 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        currentScreen = AppScreen::PLAYER_SETUP;
+        menuState.activeField = 0;
+    }
+
+    // LOAD GAME
+    float y2 = cy + 182;
+    Rectangle r2 = {btnX, y2, btnW, btnH};
+    bool h2 = isHovered(r2);
+    DrawRectangleRec({r2.x + 5, r2.y + 5, r2.width, r2.height}, {0, 0, 0, 80});
+    DrawRectangleRec(r2, h2 ? tint(C_BTN_BG, 30) : C_BTN_BG);
+    DrawRectangleLinesEx(r2, 3, C_BORDER);
+    const char *l2 = "MUAT PERMAINAN TERSIMPAN";
+    int lw2 = MeasureText(l2, 14);
+    drawPixelText(l2, (int)(r2.x + (r2.width - lw2) / 2),
+                  (int)(r2.y + (r2.height - 14) / 2), 14, C_BTN_TEXT);
+    if (h2 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        textInput.active = true;
+        textInput.isSave = false;
+        textInput.buffer = "";
+        textInput.title = "MUAT PERMAINAN";
+        textInput.hint = "Masukkan path file (contoh: saves/game1):";
+        textInput.errorMsg = "";
+    }
+
+    // EXIT
+    float y3 = cy + 254;
+    Rectangle r3 = {btnX, y3, btnW, btnH};
+    bool h3 = isHovered(r3);
+    DrawRectangleRec({r3.x + 5, r3.y + 5, r3.width, r3.height}, {0, 0, 0, 80});
+    DrawRectangleRec(r3, h3 ? Color{220, 50, 50, 255} : C_DANGER);
+    DrawRectangleLinesEx(r3, 3, C_BORDER);
+    const char *l3 = "KELUAR";
+    int lw3 = MeasureText(l3, 14);
+    drawPixelText(l3, (int)(r3.x + (r3.width - lw3) / 2),
+                  (int)(r3.y + (r3.height - 14) / 2), 14, WHITE);
+    if (h3 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        exitRequested = true;
+    }
+
+    drawPixelText("Tugas Besar 1 - IF2210 Pemrograman Berorientasi Objek",
+                  (int)(cx + 20), (int)(cy + ch - 26), 8, C_TEXT_DIM);
+}
+
+// ---- PLAYER SETUP SCREEN ----
+
+void GameWindow::drawPlayerSetup() {
+    DrawRectangle(0, 0, screenW, screenH, C_BOARD_FELT);
+    DrawRectangle(0, 0, screenW, 12, C_BTN_BG);
+    DrawRectangle(0, screenH - 12, screenW, 12, C_BTN_BG);
+    DrawRectangle(0, 0, 12, screenH, C_BTN_BG);
+    DrawRectangle(screenW - 12, 0, 12, screenH, C_BTN_BG);
+
+    float cw = 540.0f, ch = 520.0f;
+    float cx = (screenW - cw) / 2.0f;
+    float cy = (screenH - ch) / 2.0f;
+
+    DrawRectangleRec({cx + 10, cy + 10, cw, ch}, {0, 0, 0, 100});
+    DrawRectangleRec({cx, cy, cw, ch}, C_PANEL);
+    DrawRectangleLinesEx({cx, cy, cw, ch}, 4, C_BORDER);
+
+    DrawRectangle((int)cx, (int)cy, (int)cw, 64, C_BTN_BG);
+    DrawRectangle((int)cx, (int)cy, (int)cw, 8, {166, 38, 26, 255});
+    const char *hdr = "PENGATURAN PEMAIN";
+    int hw = MeasureText(hdr, 18);
+    drawPixelText(hdr, (int)(cx + (cw - hw) / 2), (int)cy + 22, 18, C_BTN_TEXT);
+
+    drawPixelText("JUMLAH PEMAIN:", (int)cx + 30, (int)cy + 82, 10, C_TEXT_DIM);
+    for (int n = 2; n <= 4; n++) {
+        float bx = cx + 180 + (n - 2) * 88.0f;
+        Rectangle nr = {bx, cy + 76, 72, 32};
+        bool sel = (menuState.numPlayers == n);
+        bool hov = isHovered(nr);
+        DrawRectangleRec(nr, sel ? C_ACCENT : (hov ? C_ACCENT_BG : C_PANEL_ALT));
+        DrawRectangleLinesEx(nr, sel ? 3.0f : 1.0f, C_BORDER);
+        std::string ns = std::to_string(n) + " Pemain";
+        int nw = MeasureText(ns.c_str(), 9);
+        drawPixelText(ns, (int)(nr.x + (nr.width - nw) / 2), (int)(nr.y + 11), 9,
+                      sel ? WHITE : C_TEXT);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            menuState.numPlayers = n;
+        }
+    }
+
+    DrawRectangle((int)cx + 20, (int)cy + 120, (int)cw - 40, 1, C_BORDER);
+
+    for (int i = 0; i < menuState.numPlayers; i++) {
+        float fy = cy + 136 + i * 70.0f;
+        bool isActive = (menuState.activeField == i);
+        Color pColor = playerIndexToColor(i);
+        DrawCircle((int)(cx + 38), (int)(fy + 22), 10, pColor);
+        DrawCircleLines((int)(cx + 38), (int)(fy + 22), 10, C_BORDER);
+
+        std::string labelStr = "Pemain " + std::to_string(i + 1);
+        drawPixelText(labelStr, (int)cx + 54, (int)fy + 8, 9, C_TEXT_DIM);
+
+        Rectangle inputRect = {cx + 54, fy + 22, cw - 90, 34};
+        Color borderCol = isActive ? C_ACCENT : C_BORDER;
+        float borderThick = isActive ? 3.0f : 1.0f;
+        DrawRectangleRec(inputRect, isActive ? Color{248, 252, 248, 255} : WHITE);
+        DrawRectangleLinesEx(inputRect, borderThick, borderCol);
+
+        std::string displayText = menuState.playerNames[i];
+        bool showCursor = isActive && ((int)(GetTime() * 2) % 2 == 0);
+        std::string shown = displayText + (showCursor ? "|" : "");
+        if (menuState.playerNames[i].empty() && !showCursor) {
+            drawPixelText(("Nama pemain " + std::to_string(i + 1)),
+                          (int)inputRect.x + 10, (int)inputRect.y + 11, 10,
+                          C_TEXT_DIM);
+        } else {
+            drawPixelText(shown, (int)inputRect.x + 10, (int)inputRect.y + 11,
+                          10, C_TEXT);
+        }
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && isHovered(inputRect)) {
+            menuState.activeField = i;
+        }
+    }
+
+    if (menuState.activeField >= 0 &&
+        menuState.activeField < menuState.numPlayers) {
+        handleKeyboardTextInput(menuState.playerNames[menuState.activeField], 16);
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_TAB)) {
+            menuState.activeField = (menuState.activeField + 1) % menuState.numPlayers;
+        }
+    }
+
+    bool allFilled = true;
+    for (int i = 0; i < menuState.numPlayers; i++)
+        if (menuState.playerNames[i].empty()) { allFilled = false; break; }
+
+    if (!allFilled) {
+        drawPixelText("Isi semua nama pemain untuk memulai.",
+                      (int)(cx + 30), (int)(cy + ch - 96), 9, C_WARN);
+    }
+
+    float sbY = cy + ch - 76;
+    float sbW = (cw - 100) * 0.65f;
+    Rectangle startBtn = {cx + 40, sbY, sbW, 44};
+    bool shov = isHovered(startBtn) && allFilled;
+    Color sbCol = allFilled ? (shov ? tint(C_ACCENT, 20) : C_ACCENT)
+                            : Color{160, 160, 155, 255};
+    DrawRectangleRec({startBtn.x + 4, startBtn.y + 4, startBtn.width, startBtn.height},
+                     {0, 0, 0, 80});
+    DrawRectangleRec(startBtn, sbCol);
+    DrawRectangleLinesEx(startBtn, 3, C_BORDER);
+    const char *startLabel = "MULAI GAME!";
+    int slw = MeasureText(startLabel, 14);
+    drawPixelText(startLabel, (int)(startBtn.x + (startBtn.width - slw) / 2),
+                  (int)(startBtn.y + (startBtn.height - 14) / 2), 14, WHITE);
+    if (allFilled && shov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        std::vector<std::string> names;
+        for (int i = 0; i < menuState.numPlayers; i++)
+            names.push_back(menuState.playerNames[i]);
+        if (newGameCallback)
+            newGameCallback(menuState.numPlayers, names);
+    }
+
+    float backX = cx + 40 + sbW + 16;
+    float backW = cw - 80 - sbW - 16;
+    Rectangle backBtn = {backX, sbY, backW, 44};
+    bool bhov = isHovered(backBtn);
+    DrawRectangleRec({backBtn.x + 4, backBtn.y + 4, backBtn.width, backBtn.height},
+                     {0, 0, 0, 80});
+    DrawRectangleRec(backBtn, bhov ? tint(C_PANEL_ALT, 15) : C_PANEL_ALT);
+    DrawRectangleLinesEx(backBtn, 2, C_BORDER);
+    const char *backLabel = "KEMBALI";
+    int blw = MeasureText(backLabel, 10);
+    drawPixelText(backLabel, (int)(backBtn.x + (backBtn.width - blw) / 2),
+                  (int)(backBtn.y + (backBtn.height - 10) / 2), 10, C_TEXT);
+    if (bhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        currentScreen = AppScreen::MAIN_MENU;
+        for (auto &n : menuState.playerNames) n = "";
+        menuState.activeField = 0;
+    }
+}
+
+// ---- TEXT INPUT OVERLAY ----
+
+void GameWindow::drawTextInputOverlay() {
+    if (!textInput.active) return;
+
+    DrawRectangle(0, 0, screenW, screenH, {0, 0, 0, 160});
+
+    float pw = 460.0f, ph = 230.0f;
+    float px = (screenW - pw) / 2.0f, py = (screenH - ph) / 2.0f;
+
+    DrawRectangleRec({px + 8, py + 8, pw, ph}, {0, 0, 0, 100});
+    DrawRectangleRec({px, py, pw, ph}, C_PANEL);
+    DrawRectangleLinesEx({px, py, pw, ph}, 3, C_BORDER);
+
+    Color hdrCol = textInput.isSave ? C_WARN : C_BTN_BG;
+    DrawRectangle((int)px, (int)py, (int)pw, 48, hdrCol);
+    int htw = MeasureText(textInput.title.c_str(), 13);
+    drawPixelText(textInput.title, (int)(px + (pw - htw) / 2), (int)py + 17, 13, WHITE);
+
+    drawPixelText(textInput.hint, (int)px + 20, (int)py + 62, 9, C_TEXT_DIM);
+
+    Rectangle inputRect = {px + 20, py + 82, pw - 40, 38};
+    DrawRectangleRec(inputRect, WHITE);
+    DrawRectangleLinesEx(inputRect, 2, C_ACCENT);
+
+    bool cursor = ((int)(GetTime() * 2) % 2 == 0);
+    std::string shown = textInput.buffer + (cursor ? "|" : "");
+    if (textInput.buffer.empty() && !cursor) {
+        drawPixelText("contoh: saves/game1 atau /path/ke/file",
+                      (int)inputRect.x + 10, (int)inputRect.y + 12, 10, C_TEXT_DIM);
+    } else {
+        drawPixelText(shown, (int)inputRect.x + 10, (int)inputRect.y + 12, 10, C_TEXT);
+    }
+
+    handleKeyboardTextInput(textInput.buffer, 64);
+
+    if (!textInput.errorMsg.empty()) {
+        drawPixelText(textInput.errorMsg, (int)px + 20, (int)py + 126, 9, C_DANGER);
+    }
+
+    float bh = 36.0f, bw = (pw - 56.0f) / 2.0f;
+    Rectangle confirmBtn = {px + 20, py + ph - bh - 14, bw, bh};
+    Rectangle cancelBtn  = {px + 36 + bw, py + ph - bh - 14, bw, bh};
+
+    bool chov  = isHovered(confirmBtn) && !textInput.buffer.empty();
+    bool cahov = isHovered(cancelBtn);
+
+    Color confirmCol = !textInput.buffer.empty()
+                           ? (chov ? tint(C_ACCENT, 20) : C_ACCENT)
+                           : Color{150, 150, 150, 255};
+    DrawRectangleRec(confirmBtn, confirmCol);
+    DrawRectangleLinesEx(confirmBtn, 2, C_BORDER);
+    const char *confLabel = textInput.buffer.empty() ? "(kosong)" : "KONFIRMASI";
+    int clw = MeasureText(confLabel, 10);
+    drawPixelText(confLabel, (int)(confirmBtn.x + (confirmBtn.width - clw) / 2),
+                  (int)(confirmBtn.y + (confirmBtn.height - 10) / 2), 10, WHITE);
+
+    DrawRectangleRec(cancelBtn, cahov ? tint(C_PANEL_ALT, 15) : C_PANEL_ALT);
+    DrawRectangleLinesEx(cancelBtn, 2, C_BORDER);
+    const char *cancelLabel = "BATAL";
+    int calw = MeasureText(cancelLabel, 10);
+    drawPixelText(cancelLabel, (int)(cancelBtn.x + (cancelBtn.width - calw) / 2),
+                  (int)(cancelBtn.y + (cancelBtn.height - 10) / 2), 10, C_TEXT);
+
+    auto confirm = [&]() {
+        std::string fn = textInput.buffer;
+        bool isSave = textInput.isSave;
+        textInput.active = false;
+        textInput.buffer = "";
+        textInput.errorMsg = "";
+        if (isSave) { if (saveGameCallback) saveGameCallback(fn); }
+        else         { if (loadGameCallback) loadGameCallback(fn); }
+    };
+    auto cancel = [&]() {
+        textInput.active = false;
+        textInput.buffer = "";
+        textInput.errorMsg = "";
+    };
+
+    if (IsKeyPressed(KEY_ENTER) && !textInput.buffer.empty()) { confirm(); return; }
+    if (chov  && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { confirm(); return; }
+    if (cahov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { cancel();  return; }
+}
+
+// ---- PROPERTY INFO OVERLAY ----
+
+void GameWindow::drawPropertyInfoOverlay() {
+    if (!propInfo.active) return;
+
+    DrawRectangle(0, 0, screenW, screenH, {0, 0, 0, 150});
+
+    float pw = 400.0f;
+    float lineH = 20.0f;
+    float ph = 60.0f + propInfo.lines.size() * lineH + 54.0f;
+    float px = (screenW - pw) / 2.0f, py = (screenH - ph) / 2.0f;
+
+    DrawRectangleRec({px + 8, py + 8, pw, ph}, {0, 0, 0, 100});
+    DrawRectangleRec({px, py, pw, ph}, C_PANEL);
+    DrawRectangleLinesEx({px, py, pw, ph}, 3, C_BORDER);
+
+    DrawRectangle((int)px, (int)py, (int)pw, 48, C_BTN_BG);
+    int htw = MeasureText(propInfo.title.c_str(), 12);
+    drawPixelText(propInfo.title, (int)(px + (pw - htw) / 2), (int)py + 17, 12,
+                  C_BTN_TEXT);
+
+    for (int i = 0; i < (int)propInfo.lines.size(); i++) {
+        int ly = (int)(py + 58 + i * lineH);
+        drawPixelText(propInfo.lines[i], (int)px + 20, ly, 9, C_TEXT);
+    }
+
+    float btnY = py + ph - 42;
+    Rectangle closeBtn = {px + 20, btnY, pw - 40, 32};
+    bool chov = isHovered(closeBtn);
+    DrawRectangleRec(closeBtn, chov ? tint(C_BTN_BG, 20) : C_BTN_BG);
+    DrawRectangleLinesEx(closeBtn, 2, C_BORDER);
+    const char *clbl = "TUTUP";
+    int clw = MeasureText(clbl, 10);
+    drawPixelText(clbl, (int)(closeBtn.x + (closeBtn.width - clw) / 2),
+                  (int)(closeBtn.y + (closeBtn.height - 10) / 2), 10, C_BTN_TEXT);
+
+    // Skip click-detection on the first frame to avoid same-frame glitch
+    if (propInfo.justOpened) { propInfo.justOpened = false; return; }
+    if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        propInfo.active = false;
+    }
+}
 
 Rectangle GameWindow::getTileRect(int tileIndex) const {
     float bx = boardRect.x, by = boardRect.y, bw = boardRect.width,
@@ -787,21 +1210,26 @@ void GameWindow::drawSidebar() {
                 it->second();
         }
         int saveY = footY + 42;
-        float hw = ((float)sw - 28 - 8) / 2.0f;
-        Rectangle sr = {(float)(sx + 14), (float)saveY, hw, 30.0f};
-        Rectangle lr = {(float)(sx + 14) + hw + 8, (float)saveY, hw, 30.0f};
-        drawButton("[ SIMPAN ]", sr, {244, 223, 170, 255}, C_WARN,
-                   isHovered(sr));
-        drawButton("[ MUAT ]", lr, C_PANEL_ALT, C_TEXT, isHovered(lr));
+        float totalW = (float)(sw - 28);
+        float gap3 = 4.0f;
+        float bw3 = (totalW - 2 * gap3) / 3.0f;
+        Rectangle sr = {(float)(sx + 14), (float)saveY, bw3, 30.0f};
+        Rectangle lr = {(float)(sx + 14) + bw3 + gap3, (float)saveY, bw3, 30.0f};
+        Rectangle er = {(float)(sx + 14) + 2 * (bw3 + gap3), (float)saveY, bw3, 30.0f};
+        drawButton("SIMPAN", sr, {244, 223, 170, 255}, C_WARN, isHovered(sr));
+        drawButton("MUAT", lr, C_PANEL_ALT, C_TEXT, isHovered(lr));
+        drawButton("KELUAR", er, C_DANGER, WHITE, isHovered(er));
         if (isHovered(sr) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             auto it = commandCallbacks.find("SIMPAN");
-            if (it != commandCallbacks.end())
-                it->second();
+            if (it != commandCallbacks.end()) it->second();
         }
         if (isHovered(lr) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             auto it = commandCallbacks.find("MUAT");
-            if (it != commandCallbacks.end())
-                it->second();
+            if (it != commandCallbacks.end()) it->second();
+        }
+        if (isHovered(er) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            auto it = commandCallbacks.find("KELUAR");
+            if (it != commandCallbacks.end()) it->second();
         }
     }
 }
@@ -885,44 +1313,95 @@ void GameWindow::drawCommandBar() {
 }
 
 void GameWindow::drawPopup() {
+    bool useList = (int)popup.options.size() > 3;
+
     DrawRectangle(0, 0, screenW, screenH, {0, 0, 0, 150});
-    float pw = 380, ph = 260, px = (screenW - pw) / 2.0f,
-          py = (screenH - ph) / 2.0f;
+    float pw = useList ? 460.0f : 380.0f;
+    float ph = useList ? 480.0f : 260.0f;
+    float px = (screenW - pw) / 2.0f, py = (screenH - ph) / 2.0f;
     Rectangle popRect = {px, py, pw, ph};
     DrawRectangleRec({px + 6, py + 6, pw, ph}, {0, 0, 0, 120});
     DrawRectangleRec(popRect, C_PANEL);
     DrawRectangleLinesEx(popRect, 3, C_BORDER);
 
     Color hc = C_BTN_BG;
-    if (popup.type == PopupType::BUY_PROPERTY)
-        hc = {27, 70, 183, 255};
-    if (popup.type == PopupType::AUCTION)
-        hc = C_WARN;
-    if (popup.type == PopupType::WINNER)
-        hc = C_ACCENT;
-    if (popup.type == PopupType::JAIL)
-        hc = C_DANGER;
+    if (popup.type == PopupType::BUY_PROPERTY) hc = {27, 70, 183, 255};
+    if (popup.type == PopupType::AUCTION)      hc = C_WARN;
+    if (popup.type == PopupType::WINNER)       hc = C_ACCENT;
+    if (popup.type == PopupType::JAIL)         hc = C_DANGER;
 
     DrawRectangle((int)px, (int)py, (int)pw, 44, hc);
     drawPixelText(popup.title, (int)px + 14, (int)py + 16, 12, WHITE);
-    drawPixelText(popup.message, (int)px + 14, (int)py + 60, 10, C_TEXT);
 
-    float obh = 34, obw = (pw - 28 - (popup.options.size() - 1) * 8.0f) /
-                          std::max(1, (int)popup.options.size());
-    for (int i = 0; i < (int)popup.options.size(); i++) {
-        Rectangle or_ = {px + 14.0f + i * (obw + 8), py + ph - obh - 14, obw,
-                         obh};
-        bool hov = isHovered(or_);
-        drawButton(popup.options[i], or_, i == 0 ? C_BTN_BG : C_PANEL_ALT,
-                   i == 0 ? C_BTN_TEXT : C_TEXT, hov);
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            popup.selectedIndex = i;
-            if (popupCallback)
-                popupCallback(i);
+    if (!useList) {
+        drawPixelText(popup.message, (int)px + 14, (int)py + 60, 10, C_TEXT);
+        float obh = 34;
+        float obw = (pw - 28 - (popup.options.size() - 1) * 8.0f) /
+                    std::max(1, (int)popup.options.size());
+        for (int i = 0; i < (int)popup.options.size(); i++) {
+            Rectangle or_ = {px + 14.0f + i * (obw + 8), py + ph - obh - 14,
+                              obw, obh};
+            bool hov = isHovered(or_);
+            drawButton(popup.options[i], or_,
+                       i == 0 ? C_BTN_BG : C_PANEL_ALT,
+                       i == 0 ? C_BTN_TEXT : C_TEXT, hov);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                popup.selectedIndex = i;
+                if (popupCallback) popupCallback(i);
+            }
+        }
+    } else {
+        // Scrollable list popup
+        drawPixelText(popup.message, (int)px + 14, (int)py + 55, 9, C_TEXT_DIM);
+
+        int visItems = 8;
+        float itemH = 32.0f;
+        float listY = py + 78;
+        float listH = visItems * itemH;
+
+        // Mouse wheel scroll
+        float wheel = GetMouseWheelMove();
+        popupScrollOffset -= (int)wheel;
+        int maxScroll = std::max(0, (int)popup.options.size() - visItems);
+        popupScrollOffset = std::max(0, std::min(popupScrollOffset, maxScroll));
+
+        // Clip drawing to list area
+        BeginScissorMode((int)(px + 8), (int)listY, (int)(pw - 16), (int)listH);
+        for (int i = 0; i < (int)popup.options.size(); i++) {
+            int vi = i - popupScrollOffset;
+            if (vi < 0 || vi >= visItems) continue;
+            float iy = listY + vi * itemH;
+            Rectangle ir = {px + 8, iy, pw - 16, itemH - 2};
+            bool hov = isHovered(ir);
+            DrawRectangleRec(ir, hov ? C_ACCENT_BG : (i % 2 == 0 ? C_PANEL : C_PANEL_ALT));
+            DrawRectangleLinesEx(ir, 1, C_BORDER);
+            drawPixelText(truncate(popup.options[i], 44), (int)(px + 18),
+                          (int)(iy + (itemH - 2 - 9) / 2), 9, C_TEXT);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                popup.selectedIndex = i;
+                if (popupCallback) popupCallback(i);
+            }
+        }
+        EndScissorMode();
+
+        // Scroll indicator
+        if (maxScroll > 0) {
+            drawPixelText("^ scroll mouse ^", (int)(px + pw - 120),
+                          (int)(listY + listH + 4), 7, C_TEXT_DIM);
+        }
+
+        // BATAL button
+        float bBY = py + ph - 42;
+        Rectangle bBtnR = {px + 14, bBY, pw - 28, 32};
+        bool bHov = isHovered(bBtnR);
+        DrawRectangleRec(bBtnR, bHov ? tint(C_PANEL_ALT, 20) : C_PANEL_ALT);
+        DrawRectangleLinesEx(bBtnR, 2, C_BORDER);
+        const char *bLbl = "BATAL";
+        int bLw = MeasureText(bLbl, 10);
+        drawPixelText(bLbl, (int)(bBtnR.x + (bBtnR.width - bLw) / 2),
+                      (int)(bBtnR.y + (bBtnR.height - 10) / 2), 10, C_TEXT);
+        if (bHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (popupCallback) popupCallback(-1);
         }
     }
-    drawPixelText("[ESC] tutup", (int)px + (int)pw - 100,
-                  (int)py + (int)ph - 18, 7, C_TEXT_DIM);
-    if (IsKeyPressed(KEY_ESCAPE))
-        closePopup();
 }

@@ -78,6 +78,10 @@ int Player::getActiveDiscountPercent() const { return activeDiscount; }
 
 void Player::setHasUsedCardThisTurn(bool used) { hasUsedCardThisTurn = used; }
 void Player::setActiveDiscountPercent(int percent) { activeDiscount = percent; }
+void Player::setMoney(int amount) { money = amount; }
+void Player::setPosition(int pos) { position = pos % 40; }
+void Player::setStatus(PlayerStatus s) { status = s; }
+void Player::setJailTurnsLeft(int turns) { jailTurnsLeft = turns; }
 
 int Player::getId() const { return playerId; }
 void Player::setId(int id) { playerId = id; }

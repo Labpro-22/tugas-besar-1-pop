@@ -12,8 +12,11 @@
 #include "../../include/models/Tile.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <random>
+#include <sstream>
+#include <stdexcept>
 
 using namespace std;
 
@@ -92,12 +95,254 @@ void GameEngine::startNewGame(const std::vector<std::string> &playerNames) {
         logger->logEvent(0, "SYSTEM", LogActionType::LOAD, "Game Started");
 }
 
-void GameEngine::loadGame(const std::string &filePath) {
-    (void)filePath; // TODO: Implementasi load game menggunakan saveLoadManager
+void GameEngine::saveGame(const std::string &filePath) {
+    std::ofstream out(filePath);
+    if (!out.is_open()) {
+        throw std::runtime_error("Tidak bisa membuka file untuk simpan: " + filePath);
+    }
+
+    out << "NIMONSPOLI_SAVE_V1\n";
+    out << "GAME " << currentTurnIdx << " " << roundCount << "\n";
+
+    for (Player *p : players) {
+        int statusInt = 0;
+        if (p->getStatus() == PlayerStatus::JAILED) statusInt = 1;
+        else if (p->getStatus() == PlayerStatus::BANKRUPT) statusInt = 2;
+        out << "PLAYER "
+            << p->getId() << " "
+            << p->getUsername() << " "
+            << p->getMoney() << " "
+            << p->getPosition() << " "
+            << statusInt << " "
+            << p->getJailTurnsLeft() << " "
+            << (p->isShieldActive() ? 1 : 0) << " "
+            << p->getActiveDiscountPercent() << "\n";
+    }
+
+    int totalTiles = board->getTotalTiles();
+    for (int i = 1; i <= totalTiles; i++) {
+        Tile *tile = board->getTileAt(i);
+        if (!tile) continue;
+        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+        if (!prop) continue;
+
+        int rentLevel = tile->getRentLevel();
+        int festMult = 1;
+        bool monopolized = false;
+        StreetTile *st = dynamic_cast<StreetTile *>(prop);
+        if (st) {
+            // Access festivalEffectMultiplier via calcRent comparison is not
+            // straightforward, so we just save rentLevel and isMonopolized
+            // which we can determine by checking color group ownership
+        }
+
+        // Determine isMonopolized by checking if all tiles in the same color
+        // group belong to the same owner
+        if (st && prop->getOwnerId() != -1) {
+            std::string cg = st->getColorGroup();
+            auto groupTiles = board->getTileByColorGroup(cg);
+            bool allSame = true;
+            for (Tile *gt : groupTiles) {
+                PropertyTile *gp = dynamic_cast<PropertyTile *>(gt);
+                if (!gp || gp->getOwnerId() != prop->getOwnerId()) {
+                    allSame = false;
+                    break;
+                }
+            }
+            monopolized = allSame;
+        }
+
+        out << "PROPERTY "
+            << tile->getKode() << " "
+            << prop->getOwnerId() << " "
+            << prop->getStatus() << " "
+            << rentLevel << " "
+            << festMult << " "
+            << (monopolized ? 1 : 0) << "\n";
+    }
+
+    out << "END\n";
+    out.close();
+
+    if (logger)
+        logger->logEvent(roundCount, "SYSTEM", LogActionType::SAVE, filePath);
 }
 
-void GameEngine::saveGame(const std::string &filePath) {
-    (void)filePath; // TODO: Implementasi save game menggunakan saveLoadManager
+void GameEngine::loadGame(const std::string &filePath) {
+    std::ifstream in(filePath);
+    if (!in.is_open()) {
+        throw std::runtime_error("File tidak ditemukan: " + filePath);
+    }
+
+    std::string line;
+    std::getline(in, line);
+    if (line != "NIMONSPOLI_SAVE_V1") {
+        throw std::runtime_error("Format file save tidak valid.");
+    }
+
+    // --- Parse GAME line ---
+    int savedTurnIdx = 0, savedRound = 1;
+    std::getline(in, line);
+    {
+        std::istringstream ss(line);
+        std::string tag;
+        ss >> tag >> savedTurnIdx >> savedRound;
+    }
+
+    // --- Parse PLAYER lines and PROPERTY lines ---
+    struct SavedPlayer {
+        int id; std::string username; int money; int position;
+        int statusInt; int jailTurns; bool shield; int discount;
+    };
+    struct SavedProperty {
+        std::string kode; int ownerId; int propStatus;
+        int rentLevel; int festMult; bool monopolized;
+    };
+
+    std::vector<SavedPlayer> savedPlayers;
+    std::vector<SavedProperty> savedProps;
+
+    while (std::getline(in, line)) {
+        if (line == "END") break;
+        std::istringstream ss(line);
+        std::string tag;
+        ss >> tag;
+        if (tag == "PLAYER") {
+            SavedPlayer sp;
+            int shieldInt;
+            ss >> sp.id >> sp.username >> sp.money >> sp.position
+               >> sp.statusInt >> sp.jailTurns >> shieldInt >> sp.discount;
+            sp.shield = (shieldInt != 0);
+            savedPlayers.push_back(sp);
+        } else if (tag == "PROPERTY") {
+            SavedProperty p;
+            int monoInt;
+            ss >> p.kode >> p.ownerId >> p.propStatus
+               >> p.rentLevel >> p.festMult >> monoInt;
+            p.monopolized = (monoInt != 0);
+            savedProps.push_back(p);
+        }
+    }
+    in.close();
+
+    // --- Rebuild game state ---
+
+    // 1. Reset all board tiles to unowned
+    int totalTiles = board->getTotalTiles();
+    for (int i = 1; i <= totalTiles; i++) {
+        Tile *tile = board->getTileAt(i);
+        if (!tile) continue;
+        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+        if (!prop) continue;
+        prop->setOwnerId(-1);
+        prop->setStatus(0);
+        StreetTile *st = dynamic_cast<StreetTile *>(prop);
+        if (st) {
+            st->demolish();
+            st->setMonopolized(false);
+            st->clearFestivalEffect();
+        }
+        RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
+        if (rr) rr->setrailroadOwnedCount(1);
+        UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
+        if (ut) ut->setUtilityOwnedCount(1);
+    }
+
+    // 2. Rebuild players
+    for (Player *p : players) delete p;
+    players.clear();
+
+    int initialMoney = ConfigLoader::getInstance()->getInitialMoney();
+    for (const auto &sp : savedPlayers) {
+        Player *p = new Player(sp.username, initialMoney);
+        p->setId(sp.id);
+        p->setMoney(sp.money);
+        p->setPosition(sp.position);
+        PlayerStatus ps = PlayerStatus::ACTIVE;
+        if (sp.statusInt == 1) ps = PlayerStatus::JAILED;
+        else if (sp.statusInt == 2) ps = PlayerStatus::BANKRUPT;
+        p->setStatus(ps);
+        p->setJailTurnsLeft(sp.jailTurns);
+        p->setShieldActive(sp.shield);
+        p->setActiveDiscountPercent(sp.discount);
+        players.push_back(p);
+    }
+
+    // 3. Restore property state
+    for (const auto &sp : savedProps) {
+        Tile *tile = board->getTileByKode(sp.kode);
+        if (!tile) continue;
+        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+        if (!prop) continue;
+
+        prop->setOwnerId(sp.ownerId);
+        prop->setStatus(sp.propStatus);
+
+        StreetTile *st = dynamic_cast<StreetTile *>(prop);
+        if (st) {
+            st->setMonopolized(sp.monopolized);
+            if (sp.rentLevel > 0) {
+                // buildHouse needs isMonopolized=true; we set it above
+                for (int h = 0; h < sp.rentLevel && h < 4; h++)
+                    st->buildHouse();
+                if (sp.rentLevel == 5)
+                    st->buildHotel();
+            }
+            if (sp.festMult > 1)
+                st->setFestivalEffect(sp.festMult);
+        }
+
+        // Update railroad/utility owned counts
+        RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
+        if (rr && sp.ownerId != -1) {
+            // Count railroads owned by this owner
+            int cnt = 0;
+            for (int i = 1; i <= totalTiles; i++) {
+                Tile *t = board->getTileAt(i);
+                RailroadTile *r2 = dynamic_cast<RailroadTile *>(t);
+                if (r2 && r2->getOwnerId() == sp.ownerId) cnt++;
+            }
+            rr->setrailroadOwnedCount(cnt > 0 ? cnt : 1);
+        }
+        UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
+        if (ut && sp.ownerId != -1) {
+            int cnt = 0;
+            for (int i = 1; i <= totalTiles; i++) {
+                Tile *t = board->getTileAt(i);
+                UtilityTile *u2 = dynamic_cast<UtilityTile *>(t);
+                if (u2 && u2->getOwnerId() == sp.ownerId) cnt++;
+            }
+            ut->setUtilityOwnedCount(cnt > 0 ? cnt : 1);
+        }
+    }
+
+    // 4. Rebuild ownedProperties lists from board
+    for (int i = 1; i <= totalTiles; i++) {
+        Tile *tile = board->getTileAt(i);
+        if (!tile) continue;
+        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+        if (!prop || prop->getOwnerId() == -1) continue;
+        for (Player *p : players) {
+            if (p->getId() == prop->getOwnerId()) {
+                p->addProperty(prop);
+                break;
+            }
+        }
+    }
+
+    // 5. Restore game state
+    currentTurnIdx = savedTurnIdx;
+    roundCount = savedRound;
+    diceRolled = false;
+    turnEnded = false;
+
+    if (logger)
+        logger->logEvent(roundCount, "SYSTEM", LogActionType::LOAD, filePath);
+}
+
+const std::vector<SkillCard *> &GameEngine::getSkillDeckCards() const {
+    static std::vector<SkillCard *> empty;
+    return empty;
 }
 
 void GameEngine::rollDice(int d1, int d2) {
@@ -176,7 +421,7 @@ void GameEngine::rollDice(int d1, int d2) {
         // Aturan standar: 3 kali double berturut-turut -> penjara
         if (activePlayer->getDoubleStreak() >= 3) {
             activePlayer->goToJail();
-            diceRolled = false; // Memaksa endTurn
+            diceRolled = true; // Giliran tetap dianggap selesai agar pemain bisa endTurn
         }
     } else {
         // Jika tidak double, kita perlu memastikan bahwa double streak
@@ -304,7 +549,7 @@ void GameEngine::executeTileAction() {
                                              activePlayer->getUsername(),
                                              LogActionType::RENT,
                                              "Ke " + owner->getUsername());
-                    } catch (NotEnoughMoneyException &) {
+                    } catch (NotEnoughMoneyException &e) {
                         std::cout
                             << "[BANGKRUT] " << activePlayer->getUsername()
                             << " bangkrut karena tidak bisa membayar sewa!\n";
@@ -328,7 +573,7 @@ void GameEngine::executeTileAction() {
                         logger->logEvent(roundCount,
                                          activePlayer->getUsername(),
                                          LogActionType::TAX, tax->getName());
-                } catch (NotEnoughMoneyException &) {
+                } catch (NotEnoughMoneyException &e) {
                     std::cout
                         << "[BANGKRUT] " << activePlayer->getUsername()
                         << " bangkrut karena tidak bisa membayar pajak flat!\n";
@@ -363,7 +608,7 @@ void GameEngine::executeTileAction() {
                         logger->logEvent(roundCount,
                                          activePlayer->getUsername(),
                                          LogActionType::TAX, tax->getName());
-                } catch (NotEnoughMoneyException &) {
+                } catch (NotEnoughMoneyException &e) {
                     std::cout << "[BANGKRUT] " << activePlayer->getUsername()
                               << " bangkrut karena tidak bisa membayar pajak "
                                  "persentase!\n";
@@ -700,6 +945,7 @@ void GameEngine::handleBankruptcy(Player *bankruptPlayer, Player *creditor) {
 
 void GameEngine::sellBuilding(const std::string &colorGroup) {
     vector<Tile *> curr = board->getTileByColorGroup(colorGroup);
+    Player *currentPlayer = players[currentTurnIdx];
     cout << "Daftar bangunan di Color Group [" << colorGroup << "]" << endl;
     int i = 1;
     for (auto v : curr) {
@@ -744,7 +990,7 @@ void GameEngine::buyBuilding(const std::string &propertyCode) {
         } else {
             std::cout << "Properti sudah mencapai level bangunan maksimal!\n";
         }
-    } catch (NotEnoughMoneyException &) {
+    } catch (NotEnoughMoneyException &e) {
         std::cout << "Uang Anda tidak cukup untuk membangun di sini.\n";
     }
 }
@@ -792,7 +1038,7 @@ void GameEngine::unmortgageProperty(const std::string &propertyCode) {
         prop->unmortgage();
         std::cout << prop->getName() << " berhasil ditebus dengan biaya Rp"
                   << cost << ".\n";
-    } catch (NotEnoughMoneyException &) {
+    } catch (NotEnoughMoneyException &e) {
         std::cout << "Uang tidak cukup untuk menebus properti (butuh Rp" << cost
                   << ").\n";
     }

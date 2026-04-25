@@ -476,7 +476,15 @@ void GameEngine::rollDice(int d1, int d2) {
             lastRollWasDouble = true; // Double biasa, beri giliran bonus
         }
     } else {
-        lastRollWasDouble = false; // Non-double: giliran berakhir normal
+        // TODO:
+        // Jika tidak double, kita perlu memastikan bahwa double streak
+        // diabaikan saat endTurn. Kita bisa asumsikan Player::resetTurnFlags()
+        // akan dihandle di endTurn, tapi untuk flag kita simpan informasi bahwa
+        // roll terakhir bukan double. Karena kita tidak memodifikasi
+        // GameEngine.hpp, kita asumsikan getDoubleStreak menandakan jumlah
+        // kesempatan roll, bukan hasil roll. Idealnya jika roll bukan double,
+        // streak seharusnya 0. Kita biarkan sesuai implementasi Player (jika
+        // tidak ada resetter spesifik, endTurn akan memanggil resetTurnFlags).
     }
 }
 

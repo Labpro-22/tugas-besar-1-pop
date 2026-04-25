@@ -87,6 +87,9 @@ class SkillCard {
     SkillCardType getSkillType() const;
 
     virtual std::string getValueString() const = 0;
+
+    virtual int getSteps()           const { return 0; }
+    virtual int getDiscountPercent() const { return 0; }
 };
 
 class MoveCard : public SkillCard {
@@ -97,7 +100,7 @@ class MoveCard : public SkillCard {
     MoveCard();
     explicit MoveCard(int savedSteps);
 
-    int getSteps() const;
+    int getSteps() const override;
 
     SkillCardEffect use(Player &player, GameEngine &engine) override;
     std::string getValueString() const override;
@@ -112,7 +115,7 @@ class DiscountCard : public SkillCard {
     DiscountCard();
     explicit DiscountCard(int savedPercent, int savedTurns = 1);
 
-    int getDiscountPercent() const;
+    int getDiscountPercent() const override;
     int getRemainingTurns() const;
     void decrementTurns();
 

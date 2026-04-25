@@ -131,14 +131,14 @@ static string findOwnerName(int ownerId, const vector<Player *> &players) {
 static void updatePropertyCounts(Player *player) {
     int rrCount = 0, utCount = 0;
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        if (dynamic_cast<RailroadTile *>(prop)) rrCount++;
-        if (dynamic_cast<UtilityTile *>(prop))  utCount++;
+        if (prop->isRailroad()) rrCount++;
+        if (prop->isUtility())  utCount++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        if (auto *rr = dynamic_cast<RailroadTile *>(prop))
-            rr->setrailroadOwnedCount(rrCount);
-        if (auto *ut = dynamic_cast<UtilityTile *>(prop))
-            ut->setUtilityOwnedCount(utCount);
+        if (prop->isRailroad())
+            static_cast<RailroadTile *>(prop)->setrailroadOwnedCount(rrCount);
+        if (prop->isUtility())
+            static_cast<UtilityTile *>(prop)->setUtilityOwnedCount(utCount);
     }
 }
 
@@ -146,17 +146,19 @@ static void checkMonopoly(Player *player, Board *board) {
     map<string, int> totalInGroup;
     map<string, int> ownedInGroup;
     for (int i = 1; i <= board->getTotalTiles(); i++) {
-        if (auto *st = dynamic_cast<StreetTile *>(board->getTileAt(i)))
-            totalInGroup[st->getColorGroup()]++;
+        Tile *t = board->getTileAt(i);
+        if (t && t->isStreet())
+            totalInGroup[t->getColorGroup()]++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        if (auto *st = dynamic_cast<StreetTile *>(prop))
-            ownedInGroup[st->getColorGroup()]++;
+        if (prop->isStreet())
+            ownedInGroup[prop->getColorGroup()]++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        if (auto *st = dynamic_cast<StreetTile *>(prop)) {
-            string cg = st->getColorGroup();
-            st->setMonopolized(ownedInGroup[cg] == totalInGroup[cg]);
+        if (prop->isStreet()) {
+            string cg = prop->getColorGroup();
+            static_cast<StreetTile *>(prop)->setMonopolized(
+                ownedInGroup[cg] == totalInGroup[cg]);
         }
     }
 }
@@ -204,31 +206,19 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         ti.ownerName = "";
         ti.propStatus = "BANK";
 
-        if (auto *st = dynamic_cast<StreetTile *>(tile)) {
-            ti.tileType = "STREET";
-            ti.colorGroup = st->getColorGroup();
-            ti.price = st->getPrice();
-            ti.propStatus = propStatusStr(st->getStatus());
-            ti.ownerName = findOwnerName(st->getOwnerId(), players);
-            int rl = st->getRentLevel();
+        ti.tileType = tile->getTileCategory();
+
+        if (tile->isProperty()) {
+            PropertyTile *prop = static_cast<PropertyTile *>(tile);
+            ti.price      = prop->getPrice();
+            ti.propStatus = propStatusStr(prop->getStatus());
+            ti.ownerName  = findOwnerName(prop->getOwnerId(), players);
+        }
+        if (tile->isStreet()) {
+            ti.colorGroup = tile->getColorGroup();
+            int rl = tile->getRentLevel();
             if (rl == 5) { ti.hasHotel = true; ti.houseCount = 0; }
             else          { ti.houseCount = rl; }
-        } else if (auto *rr = dynamic_cast<RailroadTile *>(tile)) {
-            ti.tileType = "RAILROAD";
-            ti.propStatus = propStatusStr(rr->getStatus());
-            ti.ownerName = findOwnerName(rr->getOwnerId(), players);
-        } else if (auto *ut = dynamic_cast<UtilityTile *>(tile)) {
-            ti.tileType = "UTILITY";
-            ti.propStatus = propStatusStr(ut->getStatus());
-            ti.ownerName = findOwnerName(ut->getOwnerId(), players);
-        } else if (dynamic_cast<CardTile *>(tile)) {
-            ti.tileType = "CARD";
-        } else if (dynamic_cast<TaxTile *>(tile)) {
-            ti.tileType = "TAX";
-        } else if (dynamic_cast<FestivalTile *>(tile)) {
-            ti.tileType = "FESTIVAL";
-        } else {
-            ti.tileType = "SPECIAL";
         }
         gs.tiles.push_back(ti);
     }
@@ -390,8 +380,8 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
 
     switch (effect) {
     case EffectType::OFFER_BUY: {
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) { phase = Phase::POST_ROLL; break; }
+        if (!tile->isProperty()) { phase = Phase::POST_ROLL; break; }
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
         pendingProp = prop;
 
         if (p->getMoney() >= prop->getPrice()) {
@@ -413,8 +403,9 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::AUTO_ACQUIRE: {
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (prop && prop->getOwnerId() == -1) {
+        if (!tile->isProperty()) { phase = Phase::POST_ROLL; break; }
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
+        if (prop->getOwnerId() == -1) {
             prop->setOwnerId(p->getId());
             prop->setStatus(1);
             p->addProperty(prop);
@@ -427,8 +418,8 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::PAY_RENT: {
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) { phase = Phase::POST_ROLL; break; }
+        if (!tile->isProperty()) { phase = Phase::POST_ROLL; break; }
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
 
         Player *owner = nullptr;
         for (Player *pl : engine.getAllPlayers())
@@ -475,8 +466,8 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::PAY_TAX_CHOICE: {
-        TaxTile *tax = dynamic_cast<TaxTile *>(tile);
-        if (!tax) { phase = Phase::POST_ROLL; break; }
+        if (!tile->isTaxTile()) { phase = Phase::POST_ROLL; break; }
+        TaxTile *tax = static_cast<TaxTile *>(tile);
         pendingTax = tax;
 
         PopupState ps;
@@ -494,8 +485,8 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::PAY_TAX_FLAT: {
-        TaxTile *tax = dynamic_cast<TaxTile *>(tile);
-        if (!tax) { phase = Phase::POST_ROLL; break; }
+        if (!tile->isTaxTile()) { phase = Phase::POST_ROLL; break; }
+        TaxTile *tax = static_cast<TaxTile *>(tile);
         int amount = tax->getFlatAmount();
         try {
             *p -= amount;
@@ -572,8 +563,8 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         auto props = p->getOwnedProperties();
         vector<string> opts;
         for (auto *prop : props) {
-            if (auto *st = dynamic_cast<StreetTile *>(prop))
-                opts.push_back(st->getKode() + " - " + st->getName());
+            if (prop->isStreet())
+                opts.push_back(prop->getKode() + " - " + prop->getName());
         }
         if (opts.empty()) { phase = Phase::POST_ROLL; break; }
         PopupState ps;
@@ -717,11 +708,11 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         auto props = p->getOwnedProperties();
         int streetIdx = 0;
         for (auto *prop : props) {
-            if (auto *st = dynamic_cast<StreetTile *>(prop)) {
+            if (prop->isStreet()) {
                 if (streetIdx == choice) {
-                    st->setFestivalEffect(2);
+                    static_cast<StreetTile *>(prop)->setFestivalEffect(2);
                     logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                                    LogActionType::FESTIVAL, st->getName());
+                                    LogActionType::FESTIVAL, prop->getName());
                     break;
                 }
                 streetIdx++;
@@ -809,9 +800,9 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         auto props = p->getOwnedProperties();
         map<string, vector<StreetTile *>> monopolized;
         for (auto *prop : props) {
-            if (auto *st = dynamic_cast<StreetTile *>(prop))
-                if (st->getRentLevel() < 5)
-                    monopolized[st->getColorGroup()].push_back(st);
+            if (prop->isStreet() && prop->getRentLevel() < 5)
+                monopolized[prop->getColorGroup()].push_back(
+                    static_cast<StreetTile *>(prop));
         }
         int idx = 0;
         string chosenColor;
@@ -913,14 +904,14 @@ static void handlePopupResponse(int choice, GameEngine &engine,
             lines.push_back("+================================+");
             lines.push_back("  AKTA KEPEMILIKAN");
 
-            if (auto *st = dynamic_cast<StreetTile *>(prop)) {
-                lines.push_back("  [" + st->getColorGroup() + "] " + st->getName() + " (" + st->getKode() + ")");
+            if (prop->isStreet()) {
+                lines.push_back("  [" + prop->getColorGroup() + "] " + prop->getName() + " (" + prop->getKode() + ")");
                 lines.push_back("+================================+");
-                lines.push_back("  Harga Beli : " + fmtMoney(st->getPrice()));
-                lines.push_back("  Nilai Gadai: " + fmtMoney(st->getmortgageValue()));
-                lines.push_back("  Biaya Rumah: " + fmtMoney(st->getHouseCost()));
-                lines.push_back("  Biaya Hotel: " + fmtMoney(st->getHotelCost()));
-                lines.push_back("  Level Bgn  : " + to_string(st->getRentLevel()));
+                lines.push_back("  Harga Beli : " + fmtMoney(prop->getPrice()));
+                lines.push_back("  Nilai Gadai: " + fmtMoney(prop->getmortgageValue()));
+                lines.push_back("  Biaya Rumah: " + fmtMoney(prop->getHouseCost()));
+                lines.push_back("  Biaya Hotel: " + fmtMoney(prop->getHotelCost()));
+                lines.push_back("  Level Bgn  : " + to_string(prop->getRentLevel()));
             } else {
                 lines.push_back("  " + prop->getName() + " (" + prop->getKode() + ")");
                 lines.push_back("+================================+");
@@ -1182,8 +1173,7 @@ int main() {
         vector<string> opts;
         for (PropertyTile *prop : p->getOwnedProperties()) {
             if (prop->getStatus() == 1) {
-                if (auto *st = dynamic_cast<StreetTile *>(prop))
-                    if (st->hasBuildings()) continue;
+                if (prop->hasBuildings()) continue;
                 gadaiCandidates.push_back(prop);
                 opts.push_back(prop->getKode() + " - Gadai: " +
                                fmtMoney(prop->getmortgageValue()));
@@ -1233,15 +1223,16 @@ int main() {
 
         map<string, vector<StreetTile *>> buildable;
         for (PropertyTile *prop : p->getOwnedProperties()) {
-            if (auto *st = dynamic_cast<StreetTile *>(prop))
-                if (st->getRentLevel() < 5)
-                    buildable[st->getColorGroup()].push_back(st);
+            if (prop->isStreet() && prop->getRentLevel() < 5)
+                buildable[prop->getColorGroup()].push_back(
+                    static_cast<StreetTile *>(prop));
         }
 
         map<string, int> totalInGroup;
         for (int i = 1; i <= board->getTotalTiles(); i++) {
-            if (auto *st = dynamic_cast<StreetTile *>(board->getTileAt(i)))
-                totalInGroup[st->getColorGroup()]++;
+            Tile *t = board->getTileAt(i);
+            if (t && t->isStreet())
+                totalInGroup[t->getColorGroup()]++;
         }
 
         vector<string> opts;
@@ -1271,7 +1262,8 @@ int main() {
         for (int i = 1; i <= board->getTotalTiles(); i++) {
             Tile *tile = board->getTileAt(i);
             if (!tile) continue;
-            if (auto *pt = dynamic_cast<PropertyTile *>(tile)) {
+            if (tile->isProperty()) {
+                PropertyTile *pt = static_cast<PropertyTile *>(tile);
                 string ownerStr = pt->getOwnerId() == -1 ? "BANK" :
                     findOwnerName(pt->getOwnerId(), engine.getAllPlayers());
                 lines.push_back("[" + to_string(i) + "] " + tile->getKode() +
@@ -1289,7 +1281,8 @@ int main() {
         vector<string> opts;
         for (int i = 1; i <= board->getTotalTiles(); i++) {
             Tile *tile = board->getTileAt(i);
-            if (auto *pt = dynamic_cast<PropertyTile *>(tile)) {
+            if (tile->isProperty()) {
+                PropertyTile *pt = static_cast<PropertyTile *>(tile);
                 aktaCandidates.push_back(pt);
                 string label = pt->getKode() + " - " + pt->getName();
                 string ownerStr = pt->getOwnerId() == -1 ? "" :
@@ -1322,8 +1315,8 @@ int main() {
             for (PropertyTile *prop : p->getOwnedProperties()) {
                 string info = prop->getKode() + " - " + prop->getName() +
                               " [" + propStatusStr(prop->getStatus()) + "]";
-                if (auto *st = dynamic_cast<StreetTile *>(prop))
-                    info += " Lv" + to_string(st->getRentLevel());
+                if (prop->isStreet())
+                    info += " Lv" + to_string(prop->getRentLevel());
                 lines.push_back(info);
             }
         }
@@ -1388,8 +1381,7 @@ int main() {
 
             switch (eff) {
             case SkillCardEffect::MOVE: {
-                MoveCard *mc = dynamic_cast<MoveCard *>(card);
-                int steps = mc ? mc->getSteps() : 1;
+                int steps = card->getSteps();
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::CARD, "MoveCard maju " + to_string(steps) + " petak");
                 removeUsedCard(ci);
@@ -1400,8 +1392,7 @@ int main() {
                 break;
             }
             case SkillCardEffect::DISCOUNT: {
-                DiscountCard *dc = dynamic_cast<DiscountCard *>(card);
-                int pct = dc ? dc->getDiscountPercent() : 10;
+                int pct = card->getDiscountPercent();
                 p->setActiveDiscountPercent(pct);
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::CARD, "DiscountCard diskon " + to_string(pct) + "%");
@@ -1462,14 +1453,13 @@ int main() {
                 for (Player *pl : engine.getAllPlayers()) {
                     if (pl == p || pl->getStatus() == PlayerStatus::BANKRUPT) continue;
                     for (PropertyTile *prop : pl->getOwnedProperties()) {
-                        if (auto *st = dynamic_cast<StreetTile *>(prop)) {
-                            if (st->getRentLevel() > 0) {
-                                demolitionCandidates.push_back(st);
-                                string lvl = st->getRentLevel() == 5 ? "Hotel" :
-                                    to_string(st->getRentLevel()) + " Rumah";
-                                opts.push_back(st->getKode() + " [" + pl->getUsername() +
-                                               "] " + lvl);
-                            }
+                        if (prop->isStreet() && prop->getRentLevel() > 0) {
+                            StreetTile *st = static_cast<StreetTile *>(prop);
+                            demolitionCandidates.push_back(st);
+                            string lvl = st->getRentLevel() == 5 ? "Hotel" :
+                                to_string(st->getRentLevel()) + " Rumah";
+                            opts.push_back(st->getKode() + " [" + pl->getUsername() +
+                                           "] " + lvl);
                         }
                     }
                 }

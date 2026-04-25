@@ -44,6 +44,18 @@ int PropertyTile::getPrice() const { return price; }
 int PropertyTile::getOwnerId() const { return ownerId; }
 int PropertyTile::getStatus() const { return status; }
 
+PropertyStatus PropertyTile::getPropertyStatus() const {
+    if (status == 1) return PropertyStatus::OWNED;
+    if (status == 2) return PropertyStatus::MORTGAGED;
+    return PropertyStatus::BANK;
+}
+
+void PropertyTile::setPropertyStatus(PropertyStatus ps) {
+    if (ps == PropertyStatus::OWNED)     status = 1;
+    else if (ps == PropertyStatus::MORTGAGED) status = 2;
+    else                                 status = 0;
+}
+
 // Street Tile
 StreetTile::StreetTile(int index, const std::string &code,
                        const std::string &name, const std::string &colorGroup,
@@ -64,12 +76,9 @@ int StreetTile::calcRent(int diceRoll) const {
             cur = rentTable[0]; // Sewa dasar biasa
         }
     } else {
-        // rentLevel 1-5 sesuai indeks rentTable (1=H1, 2=H2, 3=H3, 4=H4,
-        // 5=Hotel)
         cur = rentTable[rentLevel];
     }
 
-    // Terapkan efek festival jika aktif
     if (isFestivalEffectActive) {
         cur *= festivalEffectMultiplier;
     }
@@ -91,7 +100,7 @@ EffectType StreetTile::onLanded(Player &player) {
 }
 
 void StreetTile::sellTobank(Player &owner) {
-    (void)owner; // ini kayaknya redundan sama mortgage dari PropertyTile
+    (void)owner;
 }
 
 void StreetTile::buildHouse() {
@@ -101,13 +110,9 @@ void StreetTile::buildHouse() {
     if (rentLevel >= 4) {
         return;
     }
-    // perlu implemen kelas baru kalo gitu, colorGroup, supaya lebih mudah dalam
-    // pengerjaan, bisa build House jika udah monopoli semua tile di 1
-    // colorGroup yang sama, pembangunan juga harus dilakukan setara atau bisa
-    // juga pengecekan ini dilakukan di gamelogic.
+
     rentLevel++;
     hasBuilding = true;
-    // TODO : kurangi uang owner sebesar houseCost
 }
 
 void StreetTile::buildHotel() {
@@ -115,10 +120,8 @@ void StreetTile::buildHotel() {
         return;
     if (rentLevel != 4)
         return;
-    // TODO : GaneLogic harus memastikan bahwa bahwa setiap tile udah memiki
-    // rentLevel 4
+
     rentLevel = 5;
-    // TODO : kurangi uang owner
 }
 
 void StreetTile::demolish() {
@@ -135,6 +138,12 @@ void StreetTile::removeOneBuilding() {
 }
 
 bool StreetTile::hasBuildings() const { return this->hasBuilding; }
+
+int StreetTile::getHouseCount() const {
+    return (rentLevel < 5) ? rentLevel : 0;
+}
+
+bool StreetTile::hasHotel() const { return rentLevel == 5; }
 
 int StreetTile::getHouseCost() const { return this->houseCost; }
 
@@ -173,6 +182,40 @@ void StreetTile::clearFestivalEffect() {
     this->festivalEffectMultiplier = 1;
 }
 
+int StreetTile::getFestivalMultiplier() const {
+    return festivalEffectMultiplier;
+}
+
+int StreetTile::getFestivalDuration() const {
+    return 0;
+}
+
+void StreetTile::setFestivalMultiplier(int m) {
+    if (m > 1) {
+        isFestivalEffectActive = true;
+        festivalEffectMultiplier = m;
+    }
+}
+
+void StreetTile::setFestivalDuration(int d) {
+    (void)d;
+}
+
+void StreetTile::setHotel(bool val) {
+    if (val) {
+        rentLevel = 5;
+        hasBuilding = true;
+    } else {
+        if (rentLevel == 5) rentLevel = 0;
+        hasBuilding = (rentLevel > 0);
+    }
+}
+
+void StreetTile::setHouseCount(int count) {
+    rentLevel = count;
+    hasBuilding = (count > 0);
+}
+
 // RailroadTile
 
 RailroadTile::RailroadTile(int index, const std::string &code,
@@ -187,9 +230,8 @@ int RailroadTile::calcRent(int diceRoll) const {
     if (it != rentByCount.end()) {
         return it->second;
     }
+
     return 0;
-    // untuk pemilik railroad ini, cari berpaa banyak railroad yg dimilikinya,
-    // misalkan aja x maka, jawabannya adalah rentByCount[x]
 }
 
 int RailroadTile::calcValue() const { return getmortgageValue(); }

@@ -11,12 +11,11 @@ EffectType ActionTile::onLanded(Player &player) {
 }
 
 int ActionTile::calcRent(int diceRoll) const {
-    (void)diceRoll; // ActionTile tidak memiliki harga sewa
+    (void)diceRoll;
     return 0;
 }
 
 int ActionTile::getOwnerId() const {
-    // ActionTile tidak dimiliki siapapun
     return -1;
 }
 
@@ -122,7 +121,6 @@ void FestivalTile::applyFestivalToProperty(Player &player) {
 
     if (!choose)
         return;
-    // TODO : Efek festival pada StreetTile
 }
 
 // SpecialTile
@@ -139,13 +137,11 @@ GoTile::GoTile(int index, const std::string &code, const std::string &name,
 
 EffectType GoTile::handleArrival(Player &player) {
     (void)player;
-    // Pengurangan/Penambahan saldo akan dieksekusi di GameEngine
-    // setelah menerima EffectType::AWARD_SALARY
     return EffectType::AWARD_SALARY;
 }
 
 void GoTile::awardSalary(Player &player) const {
-    (void)player; // GameEngine nambahin salary
+    (void)player;
 }
 
 int GoTile::getSalary() const { return salary; }
@@ -160,20 +156,13 @@ int JailTile::getFine() const { return fine; }
 
 EffectType JailTile::handleArrival(Player &player) {
     (void)player;
-    // Jika fungsi ini dipanggil, artinya pemain mendarat ke sini via lemparan
-    // dadu biasa (berjalan). Logika ketika pemain sedang "dipenjara" (JAILED)
-    // dan masuk turn-nya TIDAK dipanggil dari onLanded(), melainkan dicek oleh
-    // GameEngine di awal turn sebelum dadu dilempar.
     return EffectType::JUST_VISITING;
 }
 
 void JailTile::imprisonPlayer(Player &player) {
     player.goToJail();
-    // Pindahkan posisi pemain ke petak penjara (index 11 sesuai papan)
     int steps = abs(11 - player.getPosition());
     player.move(steps);
-
-    // Harusnya gameEngine juga
 }
 
 void JailTile::releasePlayer(Player &player) {
@@ -189,8 +178,6 @@ EffectType JailTile::processTurnInJail(Player &player) {
         return handlePayFine(player);
     }
 
-    // TODO: opsi 3 - gunakan kartu Bebas dari Penjara (jika punya)
-    // cout << "Pilihan (1/2): ";
     int pilihan = 0;
     cin >> pilihan;
 
@@ -200,37 +187,29 @@ EffectType JailTile::processTurnInJail(Player &player) {
         return handleRollForDouble(player);
     } else {
         player.decrementJailTurn();
-        return EffectType::JAIL_TURN; // Tetap di jail, tunggu turn berikutnya
+        return EffectType::JAIL_TURN;
     }
 }
 
 EffectType JailTile::handlePayFine(Player &player) {
     if (player.getMoney() >= fine) {
-        // player -= fine;  TODO: GameEngine
         releasePlayer(player);
-        // TODO: GameLogic melanjutkan lemparan dadu normal untuk giliran ini
-        return EffectType::JAIL_PAID_FINE; // Pemain berhasil bayar dan bebas
+        return EffectType::JAIL_PAID_FINE;
     } else {
-        // TODO: GameLogic::handleBankruptcy(player, -1)
-        return EffectType::JAIL_FORCED_BANKRUPTCY; // Pemain tidak punya uang
+        return EffectType::JAIL_FORCED_BANKRUPTCY;
     }
 }
 
 EffectType JailTile::handleRollForDouble(Player &player) {
-    // TODO: GameLogic melempar dadu dan mengecek apakah double
-    // Jika double: releasePlayer() lalu gerakkan pemain
-    // Jika tidak double: player tidak bergerak, increment jailTurns
-    // Simulasi sementara, entar digantikan GameLogic
     int d1 = rand() % 6 + 1;
     int d2 = rand() % 6 + 1;
 
     if (d1 == d2) {
         releasePlayer(player);
-        // TODO: GameLogic
-        return EffectType::JAIL_ROLLED_DOUBLE; // Pemain roll double dan bebas
+        return EffectType::JAIL_ROLLED_DOUBLE;
     } else {
         player.decrementJailTurn();
-        return EffectType::JAIL_ROLLED_NO_DOUBLE; // Tetap di jail
+        return EffectType::JAIL_ROLLED_NO_DOUBLE;
     }
 }
 

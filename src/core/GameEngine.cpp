@@ -152,28 +152,22 @@ void GameEngine::saveGame(const std::string &filePath) {
     for (int i = 1; i <= totalTiles; i++) {
         Tile *tile = board->getTileAt(i);
         if (!tile) continue;
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) continue;
+        if (!tile->isProperty()) continue;
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
 
         int rentLevel = tile->getRentLevel();
         int festMult = 1;
         bool monopolized = false;
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) {
-            // Access festivalEffectMultiplier via calcRent comparison is not
-            // straightforward, so we just save rentLevel and isMonopolized
-            // which we can determine by checking color group ownership
-        }
 
         // Determine isMonopolized by checking if all tiles in the same color
         // group belong to the same owner
-        if (st && prop->getOwnerId() != -1) {
-            std::string cg = st->getColorGroup();
+        if (tile->isStreet() && prop->getOwnerId() != -1) {
+            std::string cg = tile->getColorGroup();
             auto groupTiles = board->getTileByColorGroup(cg);
             bool allSame = true;
             for (Tile *gt : groupTiles) {
-                PropertyTile *gp = dynamic_cast<PropertyTile *>(gt);
-                if (!gp || gp->getOwnerId() != prop->getOwnerId()) {
+                if (!gt->isProperty() ||
+                    static_cast<PropertyTile *>(gt)->getOwnerId() != prop->getOwnerId()) {
                     allSame = false;
                     break;
                 }
@@ -223,16 +217,18 @@ void GameEngine::loadGame(const std::string &filePath) {
     for (int i = 1; i <= totalTiles; i++) {
         Tile *tile = board->getTileAt(i);
         if (!tile) continue;
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) continue;
+        if (!tile->isProperty()) continue;
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
         prop->setOwnerId(-1);
         prop->setStatus(0);
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) { st->demolish(); st->setMonopolized(false); st->clearFestivalEffect(); }
-        RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
-        if (rr) rr->setrailroadOwnedCount(1);
-        UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
-        if (ut) ut->setUtilityOwnedCount(1);
+        if (tile->isStreet()) {
+            StreetTile *st = static_cast<StreetTile *>(tile);
+            st->demolish(); st->setMonopolized(false); st->clearFestivalEffect();
+        }
+        if (tile->isRailroad())
+            static_cast<RailroadTile *>(tile)->setrailroadOwnedCount(1);
+        if (tile->isUtility())
+            static_cast<UtilityTile *>(tile)->setUtilityOwnedCount(1);
     }
 
     // 2. Hapus semua player lama
@@ -300,14 +296,14 @@ void GameEngine::loadGame(const std::string &filePath) {
 
             Tile *tile = board->getTileByKode(kode);
             if (!tile) continue;
-            PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-            if (!prop) continue;
+            if (!tile->isProperty()) continue;
+            PropertyTile *prop = static_cast<PropertyTile *>(tile);
 
             prop->setOwnerId(ownerId);
             prop->setStatus(propStatus);
 
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            if (st) {
+            if (tile->isStreet()) {
+                StreetTile *st = static_cast<StreetTile *>(tile);
                 st->setMonopolized(monoInt != 0);
                 if (rentLevel > 0) {
                     for (int h = 0; h < rentLevel && h < 4; h++)
@@ -318,21 +314,23 @@ void GameEngine::loadGame(const std::string &filePath) {
                 if (festMult > 1)
                     st->setFestivalEffect(festMult);
             }
-            RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
-            if (rr && ownerId != -1) {
+            if (tile->isRailroad() && ownerId != -1) {
+                RailroadTile *rr = static_cast<RailroadTile *>(tile);
                 int cnt = 0;
                 for (int i = 1; i <= totalTiles; i++) {
-                    RailroadTile *r2 = dynamic_cast<RailroadTile *>(board->getTileAt(i));
-                    if (r2 && r2->getOwnerId() == ownerId) cnt++;
+                    Tile *t2 = board->getTileAt(i);
+                    if (t2 && t2->isRailroad() &&
+                        static_cast<RailroadTile *>(t2)->getOwnerId() == ownerId) cnt++;
                 }
                 rr->setrailroadOwnedCount(cnt > 0 ? cnt : 1);
             }
-            UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
-            if (ut && ownerId != -1) {
+            if (tile->isUtility() && ownerId != -1) {
+                UtilityTile *ut = static_cast<UtilityTile *>(tile);
                 int cnt = 0;
                 for (int i = 1; i <= totalTiles; i++) {
-                    UtilityTile *u2 = dynamic_cast<UtilityTile *>(board->getTileAt(i));
-                    if (u2 && u2->getOwnerId() == ownerId) cnt++;
+                    Tile *t2 = board->getTileAt(i);
+                    if (t2 && t2->isUtility() &&
+                        static_cast<UtilityTile *>(t2)->getOwnerId() == ownerId) cnt++;
                 }
                 ut->setUtilityOwnedCount(cnt > 0 ? cnt : 1);
             }
@@ -343,9 +341,9 @@ void GameEngine::loadGame(const std::string &filePath) {
     // 4. Bangun ulang daftar ownedProperties dari state board
     for (int i = 1; i <= totalTiles; i++) {
         Tile *tile = board->getTileAt(i);
-        if (!tile) continue;
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop || prop->getOwnerId() == -1) continue;
+        if (!tile || !tile->isProperty()) continue;
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
+        if (prop->getOwnerId() == -1) continue;
         for (Player *p : players) {
             if (p->getId() == prop->getOwnerId()) {
                 p->addProperty(prop);
@@ -436,9 +434,8 @@ void GameEngine::rollDice(int d1, int d2) {
             std::cout << "[PENJARA] Anda mendapat angka ganda (Double)! Anda "
                          "bebas dari penjara.\n";
             Tile *jailTile = board->getTileAt(board->getJailPosition());
-            JailTile *jt = dynamic_cast<JailTile *>(jailTile);
-            if (jt)
-                jt->releasePlayer(*activePlayer);
+            if (jailTile && jailTile->isJailTile())
+                static_cast<JailTile *>(jailTile)->releasePlayer(*activePlayer);
         } else {
             std::cout << "[PENJARA] Bukan double. Anda tetap di penjara.\n";
             activePlayer->decrementJailTurn();
@@ -455,8 +452,8 @@ void GameEngine::rollDice(int d1, int d2) {
     // Cek melewati Start/GO (Mendapatkan gaji)
     if (oldPos + diceTotal >= board->getTotalTiles() && oldPos != 0) {
         Tile *goTile = board->getTileAt(0);
-        GoTile *go = dynamic_cast<GoTile *>(goTile);
-        if (go) {
+        if (goTile && goTile->isGoTile()) {
+            GoTile *go = static_cast<GoTile *>(goTile);
             go->awardSalary(*activePlayer);
             std::cout
                 << "[INFO] Anda melewati petak GO! Menerima gaji sebesar Rp"
@@ -469,11 +466,8 @@ void GameEngine::rollDice(int d1, int d2) {
 
     // Khusus UtilityTile, simpan nilai dadu terakhir untuk kalkulasi sewa
     Tile *landedTile = board->getTileAt(activePlayer->getPosition());
-    if (landedTile) {
-        UtilityTile *util = dynamic_cast<UtilityTile *>(landedTile);
-        if (util) {
-            util->setLastDiceRoll(diceTotal);
-        }
+    if (landedTile && landedTile->isUtility()) {
+        static_cast<UtilityTile *>(landedTile)->setLastDiceRoll(diceTotal);
     }
 
     if (finalD1 == finalD2) {
@@ -511,8 +505,8 @@ void GameEngine::executeTileAction() {
 
         switch (effect) {
         case EffectType::OFFER_BUY: {
-            PropertyTile *prop = dynamic_cast<PropertyTile *>(landedTile);
-            if (prop) {
+            if (!landedTile->isProperty()) break;
+            PropertyTile *prop = static_cast<PropertyTile *>(landedTile);
                 if (activePlayer->getMoney() >= prop->getPrice()) {
                     std::cout
                         << "\n[PILIHAN] " << activePlayer->getUsername()
@@ -558,12 +552,12 @@ void GameEngine::executeTileAction() {
                     Auction auction(prop, activeBidders);
                     auction.run();
                 }
-            }
             break;
         }
         case EffectType::AUTO_ACQUIRE: {
-            PropertyTile *prop = dynamic_cast<PropertyTile *>(landedTile);
-            if (prop && prop->getOwnerId() == -1) {
+            if (!landedTile->isProperty()) break;
+            PropertyTile *prop = static_cast<PropertyTile *>(landedTile);
+            if (prop->getOwnerId() == -1) {
                 prop->setOwnerId(activePlayer->getId());
                 prop->setStatus(1);
                 activePlayer->addProperty(prop);
@@ -575,8 +569,9 @@ void GameEngine::executeTileAction() {
             break;
         }
         case EffectType::PAY_RENT: {
-            PropertyTile *prop = dynamic_cast<PropertyTile *>(landedTile);
-            if (prop && prop->getOwnerId() != -1 &&
+            if (!landedTile->isProperty()) break;
+            PropertyTile *prop = (PropertyTile *)landedTile;
+            if (prop->getOwnerId() != -1 &&
                 prop->getOwnerId() != activePlayer->getId()) {
                 // Cari owner
                 Player *owner = nullptr;
@@ -629,8 +624,8 @@ void GameEngine::executeTileAction() {
             break;
         }
         case EffectType::PAY_TAX_FLAT: {
-            TaxTile *tax = dynamic_cast<TaxTile *>(landedTile);
-            if (tax) {
+            if (!landedTile->isTaxTile()) break;
+            TaxTile *tax = static_cast<TaxTile *>(landedTile);
                 try {
                     *activePlayer -= tax->getFlatAmount();
                     if (logger)
@@ -643,12 +638,11 @@ void GameEngine::executeTileAction() {
                         << " bangkrut karena tidak bisa membayar pajak flat!\n";
                     handleBankruptcy(activePlayer, nullptr);
                 }
-            }
             break;
         }
         case EffectType::PAY_TAX_CHOICE: {
-            TaxTile *tax = dynamic_cast<TaxTile *>(landedTile);
-            if (tax) {
+            if (!landedTile->isTaxTile()) break;
+            TaxTile *tax = static_cast<TaxTile *>(landedTile);
                 int flat = tax->getFlatAmount();
                 int pct = static_cast<int>(tax->computeNetWorth(*activePlayer) *
                                            tax->getPercentageRate() / 100.0);
@@ -678,12 +672,12 @@ void GameEngine::executeTileAction() {
                                  "persentase!\n";
                     handleBankruptcy(activePlayer, nullptr);
                 }
-            }
             break;
         }
         case EffectType::START_AUCTION: {
-            PropertyTile *prop = dynamic_cast<PropertyTile *>(landedTile);
-            if (prop && prop->getOwnerId() == -1) {
+            if (!landedTile->isProperty()) break;
+            PropertyTile *prop = static_cast<PropertyTile *>(landedTile);
+            if (prop->getOwnerId() == -1) {
                 std::vector<Player *> activeBidders;
                 for (Player *p : players) {
                     if (p->getStatus() != PlayerStatus::BANKRUPT)
@@ -735,9 +729,9 @@ void GameEngine::executeTileAction() {
                 int fChoice;
                 std::cin >> fChoice;
                 if (fChoice >= 1 && fChoice <= (int)props.size()) {
-                    StreetTile *street =
-                        dynamic_cast<StreetTile *>(props[fChoice - 1]);
-                    if (street) {
+                    PropertyTile *sel = props[fChoice - 1];
+                    if (sel->isStreet()) {
+                        StreetTile *street = static_cast<StreetTile *>(sel);
                         street->setFestivalEffect(2); // Set multiplier
                         std::cout << "Festival berhasil diadakan di "
                                   << street->getName()
@@ -763,11 +757,10 @@ void GameEngine::handleActionCardEffect(Player &player,
         for (int i = 1; i <= 40; i++) {
             int checkIdx = (pos + i) % 40 + 1;
             Tile *t = board->getTileAt(checkIdx);
-            RailroadTile *rr = dynamic_cast<RailroadTile *>(t);
-            if (rr) {
+            if (t && t->isRailroad()) {
                 player.move(i);
                 std::cout << player.getUsername()
-                          << " maju ke stasiun terdekat: " << rr->getName()
+                          << " maju ke stasiun terdekat: " << t->getName()
                           << ".\n";
                 break;
             }
@@ -873,20 +866,20 @@ void GameEngine::useSkillCard(int cardIdx) {
 
     switch (effect) {
     case SkillCardEffect::MOVE: {
-        MoveCard *mc = dynamic_cast<MoveCard *>(card);
-        if (mc) {
-            activePlayer->move(mc->getSteps());
+        int steps = card->getSteps();
+        if (steps > 0) {
+            activePlayer->move(steps);
             std::cout << activePlayer->getUsername() << " maju "
-                      << mc->getSteps() << " petak.\n";
+                      << steps << " petak.\n";
         }
         break;
     }
 
     case SkillCardEffect::DISCOUNT: {
-        DiscountCard *dc = dynamic_cast<DiscountCard *>(card);
-        if (dc) {
-            activePlayer->setActiveDiscountPercent(dc->getDiscountPercent());
-            std::cout << "Diskon " << dc->getDiscountPercent()
+        int pct = card->getDiscountPercent();
+        if (pct > 0) {
+            activePlayer->setActiveDiscountPercent(pct);
+            std::cout << "Diskon " << pct
                       << "% aktif untuk giliran ini.\n";
         }
         break;
@@ -949,9 +942,8 @@ void GameEngine::useSkillCard(int cardIdx) {
             if (p->getStatus() == PlayerStatus::BANKRUPT)
                 continue;
             for (PropertyTile *prop : p->getOwnedProperties()) {
-                StreetTile *st = dynamic_cast<StreetTile *>(prop);
-                if (st && st->hasBuildings())
-                    targets.push_back(st);
+                if (prop->isStreet() && prop->hasBuildings())
+                    targets.push_back(static_cast<StreetTile *>(prop));
             }
         }
         if (targets.empty()) {
@@ -993,10 +985,8 @@ void GameEngine::handleBankruptcy(Player *bankruptPlayer, Player *creditor) {
         } else {
             prop->setOwnerId(-1);
             prop->setStatus(0); // Kembali ke BANK
-            StreetTile *street = dynamic_cast<StreetTile *>(prop);
-            if (street && street->hasBuildings()) {
-                street->demolish();
-            }
+            if (prop->isStreet() && prop->hasBuildings())
+                static_cast<StreetTile *>(prop)->demolish();
         }
     }
 
@@ -1013,7 +1003,6 @@ void GameEngine::handleBankruptcy(Player *bankruptPlayer, Player *creditor) {
 
 void GameEngine::sellBuilding(const std::string &colorGroup) {
     vector<Tile *> curr = board->getTileByColorGroup(colorGroup);
-    Player *currentPlayer = players[currentTurnIdx];
     cout << "Daftar bangunan di Color Group [" << colorGroup << "]" << endl;
     int i = 1;
     for (auto v : curr) {
@@ -1036,12 +1025,11 @@ void GameEngine::sellBuilding(const std::string &colorGroup) {
 void GameEngine::buyBuilding(const std::string &propertyCode) {
     Player *activePlayer = players[currentTurnIdx];
     Tile *tile = board->getTileByKode(propertyCode);
-    StreetTile *street = dynamic_cast<StreetTile *>(tile);
-
-    if (!street || street->getOwnerId() != activePlayer->getId()) {
+    if (!tile || !tile->isStreet() || tile->getOwnerId() != activePlayer->getId()) {
         std::cout << "Properti tidak valid atau bukan milik Anda.\n";
         return;
     }
+    StreetTile *street = static_cast<StreetTile *>(tile);
 
     try {
         if (street->getRentLevel() < 4) { // Max 4 rumah
@@ -1050,8 +1038,8 @@ void GameEngine::buyBuilding(const std::string &propertyCode) {
             auto groupTiles = board->getTileByColorGroup(street->getColorGroup());
             for (Tile *gt : groupTiles) {
                 if (gt == tile) continue;
-                StreetTile *gs = dynamic_cast<StreetTile *>(gt);
-                if (gs && gs->getRentLevel() < street->getRentLevel()) {
+                if (gt->isStreet() && gt->getRentLevel() < street->getRentLevel()) {
+                    StreetTile *gs = static_cast<StreetTile *>(gt);
                     std::cout << "Aturan bangun merata: " << gs->getName()
                               << " harus dibangun terlebih dahulu.\n";
                     return;
@@ -1078,9 +1066,12 @@ void GameEngine::buyBuilding(const std::string &propertyCode) {
 void GameEngine::mortgageProperty(const std::string &propertyCode) {
     Player *activePlayer = players[currentTurnIdx];
     Tile *tile = board->getTileByKode(propertyCode);
-    PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-
-    if (!prop || prop->getOwnerId() != activePlayer->getId()) {
+    if (!tile || !tile->isProperty()) {
+        std::cout << "Properti tidak valid atau bukan milik Anda.\n";
+        return;
+    }
+    PropertyTile *prop = static_cast<PropertyTile *>(tile);
+    if (prop->getOwnerId() != activePlayer->getId()) {
         std::cout << "Properti tidak valid atau bukan milik Anda.\n";
         return;
     }
@@ -1099,9 +1090,12 @@ void GameEngine::mortgageProperty(const std::string &propertyCode) {
 void GameEngine::unmortgageProperty(const std::string &propertyCode) {
     Player *activePlayer = players[currentTurnIdx];
     Tile *tile = board->getTileByKode(propertyCode);
-    PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-
-    if (!prop || prop->getOwnerId() != activePlayer->getId()) {
+    if (!tile || !tile->isProperty()) {
+        std::cout << "Properti tidak valid atau bukan milik Anda.\n";
+        return;
+    }
+    PropertyTile *prop = static_cast<PropertyTile *>(tile);
+    if (prop->getOwnerId() != activePlayer->getId()) {
         std::cout << "Properti tidak valid atau bukan milik Anda.\n";
         return;
     }

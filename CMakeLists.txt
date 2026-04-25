@@ -14,10 +14,10 @@ list(FILTER ALL_SRCS EXCLUDE REGEX "src/test_.*\\.cpp$")
 list(FILTER ALL_SRCS EXCLUDE REGEX "src/core/SaveLoadManager\\.cpp$")
 
 # Pembuatan Target executable
-add_executable(game ${ALL_SRCS})
+add_executable(Nimonspoli ${ALL_SRCS})
 
 # Pendefinisian direktori (Directories)
-target_include_directories(game PRIVATE
+target_include_directories(Nimonspoli PRIVATE
     include
     include/core
     include/models
@@ -43,4 +43,4 @@ if (NOT raylib_FOUND)
 endif()
 
 # Proses Taut (Link) pustaka
-target_link_libraries(game PRIVATE raylib)
+target_link_libraries(Nimonspoli PRIVATE raylib)

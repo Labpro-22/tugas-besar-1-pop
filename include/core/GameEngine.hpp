@@ -7,12 +7,15 @@
 
 // Forward Declarations - Hindari include di header untuk mencegah circular
 // dependency
+
 class Player;
 class Board;
 class SaveLoadManager;
 class TransactionLogger;
 class Auction;
 class SkillCard;
+class ActionCard;
+class PropertyTile;
 template <typename T> class CardDeck;
 
 class GameEngine {

@@ -13,7 +13,7 @@ class Tile {
   public:
     Tile(int id, string kode, string name);
     virtual EffectType onLanded(Player &player) = 0;
-    virtual ~Tile();
+    virtual ~Tile() = default;
     int getIndex() const;
     string getKode() const;
     string getName() const;
@@ -23,5 +23,5 @@ class Tile {
     virtual int calcRent(int diceRoll = 0) const = 0;
     virtual int calcValue() const = 0;
     virtual int getRentLevel() const { return 0; }
-    virtual void demolish();
+    virtual void demolish() {};
 };

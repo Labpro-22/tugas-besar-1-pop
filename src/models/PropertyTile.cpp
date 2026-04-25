@@ -160,8 +160,12 @@ int StreetTile::calcValue() const {
 }
 
 void StreetTile::setFestivalEffect(int multiplier) {
-    this->isFestivalEffectActive = true;
-    this->festivalEffectMultiplier = multiplier;
+    if (isFestivalEffectActive) {
+        this->festivalEffectMultiplier *= multiplier;
+    } else {
+        this->isFestivalEffectActive = true;
+        this->festivalEffectMultiplier = multiplier;
+    }
 }
 
 void StreetTile::clearFestivalEffect() {

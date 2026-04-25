@@ -130,6 +130,22 @@ void GameEngine::saveGame(const std::string &filePath) {
             << p->getJailTurnsLeft() << " "
             << (p->isShieldActive() ? 1 : 0) << " "
             << p->getActiveDiscountPercent() << "\n";
+
+        for (SkillCard *sc : p->getHandCards()) {
+            std::string typeName;
+            switch (sc->getSkillType()) {
+                case SkillCardType::MOVE:       typeName = "MOVE";       break;
+                case SkillCardType::DISCOUNT:   typeName = "DISCOUNT";   break;
+                case SkillCardType::SHIELD:     typeName = "SHIELD";     break;
+                case SkillCardType::TELEPORT:   typeName = "TELEPORT";   break;
+                case SkillCardType::LASSO:      typeName = "LASSO";      break;
+                case SkillCardType::DEMOLITION: typeName = "DEMOLITION"; break;
+                default:                        typeName = "UNKNOWN";    break;
+            }
+            std::string val = sc->getValueString();
+            out << "SKILLCARD " << p->getId() << " " << typeName
+                << " " << (val.empty() ? "0" : val) << "\n";
+        }
     }
 
     int totalTiles = board->getTotalTiles();
@@ -202,45 +218,7 @@ void GameEngine::loadGame(const std::string &filePath) {
         ss >> tag >> savedTurnIdx >> savedRound;
     }
 
-    // --- Parse PLAYER lines and PROPERTY lines ---
-    struct SavedPlayer {
-        int id; std::string username; int money; int position;
-        int statusInt; int jailTurns; bool shield; int discount;
-    };
-    struct SavedProperty {
-        std::string kode; int ownerId; int propStatus;
-        int rentLevel; int festMult; bool monopolized;
-    };
-
-    std::vector<SavedPlayer> savedPlayers;
-    std::vector<SavedProperty> savedProps;
-
-    while (std::getline(in, line)) {
-        if (line == "END") break;
-        std::istringstream ss(line);
-        std::string tag;
-        ss >> tag;
-        if (tag == "PLAYER") {
-            SavedPlayer sp;
-            int shieldInt;
-            ss >> sp.id >> sp.username >> sp.money >> sp.position
-               >> sp.statusInt >> sp.jailTurns >> shieldInt >> sp.discount;
-            sp.shield = (shieldInt != 0);
-            savedPlayers.push_back(sp);
-        } else if (tag == "PROPERTY") {
-            SavedProperty p;
-            int monoInt;
-            ss >> p.kode >> p.ownerId >> p.propStatus
-               >> p.rentLevel >> p.festMult >> monoInt;
-            p.monopolized = (monoInt != 0);
-            savedProps.push_back(p);
-        }
-    }
-    in.close();
-
-    // --- Rebuild game state ---
-
-    // 1. Reset all board tiles to unowned
+    // 1. Reset semua tile board ke kondisi awal
     int totalTiles = board->getTotalTiles();
     for (int i = 1; i <= totalTiles; i++) {
         Tile *tile = board->getTileAt(i);
@@ -250,86 +228,119 @@ void GameEngine::loadGame(const std::string &filePath) {
         prop->setOwnerId(-1);
         prop->setStatus(0);
         StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) {
-            st->demolish();
-            st->setMonopolized(false);
-            st->clearFestivalEffect();
-        }
+        if (st) { st->demolish(); st->setMonopolized(false); st->clearFestivalEffect(); }
         RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
         if (rr) rr->setrailroadOwnedCount(1);
         UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
         if (ut) ut->setUtilityOwnedCount(1);
     }
 
-    // 2. Rebuild players
+    // 2. Hapus semua player lama
     for (Player *p : players) delete p;
     players.clear();
 
     int initialMoney = ConfigLoader::getInstance()->getInitialMoney();
-    for (const auto &sp : savedPlayers) {
-        Player *p = new Player(sp.username, initialMoney);
-        p->setId(sp.id);
-        p->setMoney(sp.money);
-        p->setPosition(sp.position);
-        PlayerStatus ps = PlayerStatus::ACTIVE;
-        if (sp.statusInt == 1) ps = PlayerStatus::JAILED;
-        else if (sp.statusInt == 2) ps = PlayerStatus::BANKRUPT;
-        p->setStatus(ps);
-        p->setJailTurnsLeft(sp.jailTurns);
-        p->setShieldActive(sp.shield);
-        p->setActiveDiscountPercent(sp.discount);
-        players.push_back(p);
+
+    // 3. Parse dan terapkan setiap baris langsung (tanpa buffer sementara)
+    //    Format file menjamin PLAYER selalu sebelum SKILLCARD dan PROPERTY.
+    while (std::getline(in, line)) {
+        if (line == "END") break;
+        std::istringstream ss(line);
+        std::string tag;
+        ss >> tag;
+
+        if (tag == "PLAYER") {
+            int id, money, position, statusInt, jailTurns, shieldInt, discount;
+            std::string username;
+            ss >> id >> username >> money >> position
+               >> statusInt >> jailTurns >> shieldInt >> discount;
+
+            Player *p = new Player(username, initialMoney);
+            p->setId(id);
+            p->setMoney(money);
+            p->setPosition(position);
+            PlayerStatus ps = PlayerStatus::ACTIVE;
+            if (statusInt == 1) ps = PlayerStatus::JAILED;
+            else if (statusInt == 2) ps = PlayerStatus::BANKRUPT;
+            p->setStatus(ps);
+            p->setJailTurnsLeft(jailTurns);
+            p->setShieldActive(shieldInt != 0);
+            p->setActiveDiscountPercent(discount);
+            players.push_back(p);
+
+        } else if (tag == "SKILLCARD") {
+            int playerId, value;
+            std::string typeName;
+            ss >> playerId >> typeName >> value;
+
+            SkillCard *card = nullptr;
+            if (typeName == "MOVE")            card = new MoveCard(value);
+            else if (typeName == "DISCOUNT")   card = new DiscountCard(value);
+            else if (typeName == "SHIELD")     card = new ShieldCard();
+            else if (typeName == "TELEPORT")   card = new TeleportCard();
+            else if (typeName == "LASSO")      card = new LassoCard();
+            else if (typeName == "DEMOLITION") card = new DemolitionCard();
+
+            if (card) {
+                bool handled = false;
+                for (Player *p : players) {
+                    if (p->getId() == playerId) {
+                        try { p->addCard(card); } catch (...) { delete card; }
+                        handled = true;
+                        break;
+                    }
+                }
+                if (!handled) delete card;
+            }
+
+        } else if (tag == "PROPERTY") {
+            std::string kode;
+            int ownerId, propStatus, rentLevel, festMult, monoInt;
+            ss >> kode >> ownerId >> propStatus >> rentLevel >> festMult >> monoInt;
+
+            Tile *tile = board->getTileByKode(kode);
+            if (!tile) continue;
+            PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+            if (!prop) continue;
+
+            prop->setOwnerId(ownerId);
+            prop->setStatus(propStatus);
+
+            StreetTile *st = dynamic_cast<StreetTile *>(prop);
+            if (st) {
+                st->setMonopolized(monoInt != 0);
+                if (rentLevel > 0) {
+                    for (int h = 0; h < rentLevel && h < 4; h++)
+                        st->buildHouse();
+                    if (rentLevel == 5)
+                        st->buildHotel();
+                }
+                if (festMult > 1)
+                    st->setFestivalEffect(festMult);
+            }
+            RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
+            if (rr && ownerId != -1) {
+                int cnt = 0;
+                for (int i = 1; i <= totalTiles; i++) {
+                    RailroadTile *r2 = dynamic_cast<RailroadTile *>(board->getTileAt(i));
+                    if (r2 && r2->getOwnerId() == ownerId) cnt++;
+                }
+                rr->setrailroadOwnedCount(cnt > 0 ? cnt : 1);
+            }
+            UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
+            if (ut && ownerId != -1) {
+                int cnt = 0;
+                for (int i = 1; i <= totalTiles; i++) {
+                    UtilityTile *u2 = dynamic_cast<UtilityTile *>(board->getTileAt(i));
+                    if (u2 && u2->getOwnerId() == ownerId) cnt++;
+                }
+                ut->setUtilityOwnedCount(cnt > 0 ? cnt : 1);
+            }
+        }
     }
+    in.close();
 
-    // 3. Restore property state
-    for (const auto &sp : savedProps) {
-        Tile *tile = board->getTileByKode(sp.kode);
-        if (!tile) continue;
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) continue;
-
-        prop->setOwnerId(sp.ownerId);
-        prop->setStatus(sp.propStatus);
-
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) {
-            st->setMonopolized(sp.monopolized);
-            if (sp.rentLevel > 0) {
-                // buildHouse needs isMonopolized=true; we set it above
-                for (int h = 0; h < sp.rentLevel && h < 4; h++)
-                    st->buildHouse();
-                if (sp.rentLevel == 5)
-                    st->buildHotel();
-            }
-            if (sp.festMult > 1)
-                st->setFestivalEffect(sp.festMult);
-        }
-
-        // Update railroad/utility owned counts
-        RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
-        if (rr && sp.ownerId != -1) {
-            // Count railroads owned by this owner
-            int cnt = 0;
-            for (int i = 1; i <= totalTiles; i++) {
-                Tile *t = board->getTileAt(i);
-                RailroadTile *r2 = dynamic_cast<RailroadTile *>(t);
-                if (r2 && r2->getOwnerId() == sp.ownerId) cnt++;
-            }
-            rr->setrailroadOwnedCount(cnt > 0 ? cnt : 1);
-        }
-        UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
-        if (ut && sp.ownerId != -1) {
-            int cnt = 0;
-            for (int i = 1; i <= totalTiles; i++) {
-                Tile *t = board->getTileAt(i);
-                UtilityTile *u2 = dynamic_cast<UtilityTile *>(t);
-                if (u2 && u2->getOwnerId() == sp.ownerId) cnt++;
-            }
-            ut->setUtilityOwnedCount(cnt > 0 ? cnt : 1);
-        }
-    }
-
-    // 4. Rebuild ownedProperties lists from board
+    // 4. Bangun ulang daftar ownedProperties dari state board
     for (int i = 1; i <= totalTiles; i++) {
         Tile *tile = board->getTileAt(i);
         if (!tile) continue;
@@ -989,6 +1000,10 @@ void GameEngine::handleBankruptcy(Player *bankruptPlayer, Player *creditor) {
         }
     }
 
+    for (PropertyTile *prop : properties) {
+        bankruptPlayer->removeProperty(prop);
+    }
+
     std::cout << "Semua aset milik " << bankruptPlayer->getUsername()
               << " telah "
               << (creditor ? "diserahkan ke " + creditor->getUsername()
@@ -1030,6 +1045,18 @@ void GameEngine::buyBuilding(const std::string &propertyCode) {
 
     try {
         if (street->getRentLevel() < 4) { // Max 4 rumah
+            // Even-building rule: semua properti satu warna harus punya rumah
+            // yang sama sebelum bisa menambah 1 lagi di properti ini
+            auto groupTiles = board->getTileByColorGroup(street->getColorGroup());
+            for (Tile *gt : groupTiles) {
+                if (gt == tile) continue;
+                StreetTile *gs = dynamic_cast<StreetTile *>(gt);
+                if (gs && gs->getRentLevel() < street->getRentLevel()) {
+                    std::cout << "Aturan bangun merata: " << gs->getName()
+                              << " harus dibangun terlebih dahulu.\n";
+                    return;
+                }
+            }
             *activePlayer -= street->getHouseCost();
             street->buildHouse();
             std::cout << "Berhasil membangun rumah di " << street->getName()

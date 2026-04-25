@@ -28,9 +28,9 @@ CardTile::CardTile(int index, const std::string &code, const std::string &name,
 
 EffectType CardTile::triggerEffect(Player &player) {
     (void)player;
-    if (cardType == "1") {
+    if (cardType == "CHANCE") {
         return EffectType::DRAW_CHANCE;
-    } else if (cardType == "2") {
+    } else if (cardType == "COMMUNITY_CHEST") {
         return EffectType::DRAW_COMMUNITY;
     }
     return EffectType::NONE;
@@ -177,7 +177,8 @@ void JailTile::imprisonPlayer(Player &player) {
 }
 
 void JailTile::releasePlayer(Player &player) {
-    (void)player; // TODO : ubah status dari Jailed ke Active (oleh GameEngine)
+    player.setStatus(PlayerStatus::ACTIVE);
+    player.setJailTurnsLeft(0);
 }
 
 EffectType JailTile::processTurnInJail(Player &player) {

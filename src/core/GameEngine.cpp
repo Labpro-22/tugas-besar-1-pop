@@ -179,6 +179,7 @@ void GameEngine::rollDice(int d1, int d2) {
             diceRolled = false; // Memaksa endTurn
         }
     } else {
+        // TODO:
         // Jika tidak double, kita perlu memastikan bahwa double streak
         // diabaikan saat endTurn. Kita bisa asumsikan Player::resetTurnFlags()
         // akan dihandle di endTurn, tapi untuk flag kita simpan informasi bahwa

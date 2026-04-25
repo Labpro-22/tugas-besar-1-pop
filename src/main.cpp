@@ -50,7 +50,6 @@ static Phase phase = Phase::MENU;
 static Pending pending = Pending::NONE;
 static int lastD1 = 0, lastD2 = 0;
 static bool turnJustStarted = true;
-static bool gameOverShown = false;
 
 // Pending context
 static PropertyTile *pendingProp = nullptr;
@@ -70,7 +69,6 @@ static AuctionCtx auctionCtx;
 
 // Bangun state
 static vector<StreetTile *> bangunCandidates;
-static string bangunColorGroup;
 
 // Gadai/Tebus candidates
 static vector<PropertyTile *> gadaiCandidates;
@@ -213,7 +211,6 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         StreetTile *st = dynamic_cast<StreetTile *>(tile);
         RailroadTile *rr = dynamic_cast<RailroadTile *>(tile);
         UtilityTile *ut = dynamic_cast<UtilityTile *>(tile);
-        PropertyTile *pt = dynamic_cast<PropertyTile *>(tile);
 
         if (st) {
             ti.tileType = "STREET";

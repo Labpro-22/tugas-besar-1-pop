@@ -4,7 +4,6 @@ project(Nimonspoli CXX)
 # Pengaturan kompilator sesuai spesifikasi makefile
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_compile_options(-Wall -Wextra)
 
 # Implementasi Recursive Source Finding
 file(GLOB_RECURSE ALL_SRCS "src/*.cpp")
@@ -15,6 +14,9 @@ list(FILTER ALL_SRCS EXCLUDE REGEX "src/core/SaveLoadManager\\.cpp$")
 
 # Pembuatan Target executable
 add_executable(game ${ALL_SRCS})
+
+# Aktifkan warning hanya untuk target game (kode kita), BUKAN untuk library pihak ketiga
+target_compile_options(game PRIVATE -Wall -Wextra)
 
 # Pendefinisian direktori (Directories)
 target_include_directories(game PRIVATE

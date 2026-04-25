@@ -93,11 +93,11 @@ void GameEngine::startNewGame(const std::vector<std::string> &playerNames) {
 }
 
 void GameEngine::loadGame(const std::string &filePath) {
-    // TODO: Implementasi load game menggunakan saveLoadManager
+    (void)filePath; // TODO: Implementasi load game menggunakan saveLoadManager
 }
 
 void GameEngine::saveGame(const std::string &filePath) {
-    // TODO: Implementasi save game menggunakan saveLoadManager
+    (void)filePath; // TODO: Implementasi save game menggunakan saveLoadManager
 }
 
 void GameEngine::rollDice(int d1, int d2) {
@@ -304,7 +304,7 @@ void GameEngine::executeTileAction() {
                                              activePlayer->getUsername(),
                                              LogActionType::RENT,
                                              "Ke " + owner->getUsername());
-                    } catch (NotEnoughMoneyException &e) {
+                    } catch (NotEnoughMoneyException &) {
                         std::cout
                             << "[BANGKRUT] " << activePlayer->getUsername()
                             << " bangkrut karena tidak bisa membayar sewa!\n";
@@ -328,7 +328,7 @@ void GameEngine::executeTileAction() {
                         logger->logEvent(roundCount,
                                          activePlayer->getUsername(),
                                          LogActionType::TAX, tax->getName());
-                } catch (NotEnoughMoneyException &e) {
+                } catch (NotEnoughMoneyException &) {
                     std::cout
                         << "[BANGKRUT] " << activePlayer->getUsername()
                         << " bangkrut karena tidak bisa membayar pajak flat!\n";
@@ -363,7 +363,7 @@ void GameEngine::executeTileAction() {
                         logger->logEvent(roundCount,
                                          activePlayer->getUsername(),
                                          LogActionType::TAX, tax->getName());
-                } catch (NotEnoughMoneyException &e) {
+                } catch (NotEnoughMoneyException &) {
                     std::cout << "[BANGKRUT] " << activePlayer->getUsername()
                               << " bangkrut karena tidak bisa membayar pajak "
                                  "persentase!\n";
@@ -700,7 +700,6 @@ void GameEngine::handleBankruptcy(Player *bankruptPlayer, Player *creditor) {
 
 void GameEngine::sellBuilding(const std::string &colorGroup) {
     vector<Tile *> curr = board->getTileByColorGroup(colorGroup);
-    Player *currentPlayer = players[currentTurnIdx];
     cout << "Daftar bangunan di Color Group [" << colorGroup << "]" << endl;
     int i = 1;
     for (auto v : curr) {
@@ -745,7 +744,7 @@ void GameEngine::buyBuilding(const std::string &propertyCode) {
         } else {
             std::cout << "Properti sudah mencapai level bangunan maksimal!\n";
         }
-    } catch (NotEnoughMoneyException &e) {
+    } catch (NotEnoughMoneyException &) {
         std::cout << "Uang Anda tidak cukup untuk membangun di sini.\n";
     }
 }
@@ -793,7 +792,7 @@ void GameEngine::unmortgageProperty(const std::string &propertyCode) {
         prop->unmortgage();
         std::cout << prop->getName() << " berhasil ditebus dengan biaya Rp"
                   << cost << ".\n";
-    } catch (NotEnoughMoneyException &e) {
+    } catch (NotEnoughMoneyException &) {
         std::cout << "Uang tidak cukup untuk menebus properti (butuh Rp" << cost
                   << ").\n";
     }

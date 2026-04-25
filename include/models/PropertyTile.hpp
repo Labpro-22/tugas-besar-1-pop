@@ -6,8 +6,8 @@
 
 class PropertyTile : public Tile {
   protected:
-    int mortgageValue;
     int price;
+    int mortgageValue;
     int ownerId; // -1 jika milik Bank
     int status;  // 0: BANK, 1: OWNED, 2: MORTGAGED
 
@@ -73,8 +73,8 @@ class StreetTile : public PropertyTile {
     std::string colorGroup;
     std::vector<int> rentTable; // Indeks sesuai RentLevel
     int houseCost;
-    int rentLevel;
     int hotelCost;
+    int rentLevel;
     int festivalEffectMultiplier = 1;
     bool isMonopolized = false;
     bool isFestivalEffectActive = false;

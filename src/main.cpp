@@ -1,4 +1,4 @@
-// main.cpp, Controller: menghubungkan GameEngine <-> GameWindow
+// main.cpp — Controller: menghubungkan GameEngine <-> GameWindow (fully GUI)
 
 #include "../include/core/ConfigLoader.hpp"
 #include "../include/core/Exceptions.hpp"
@@ -13,7 +13,6 @@
 #include "../include/views/GameWindow.hpp"
 
 #include <algorithm>
-#include <iostream>
 #include <random>
 #include <sstream>
 #include <string>
@@ -43,6 +42,13 @@ enum class Pending {
     BANGUN_COLOR_SELECT,
     BANGUN_TILE_SELECT,
     SAVE_CONFIRM,
+    EXIT_CONFIRM,
+    AKTA_SELECT,         // Pilih properti untuk cetak akta
+    PAPAN_INFO,          // Info papan permainan
+    PROPERTI_INFO,       // Info properti pemain
+    TELEPORT_SELECT,     // Pilih tujuan TeleportCard
+    LASSO_SELECT,        // Pilih target LassoCard
+    DEMOLITION_SELECT,   // Pilih properti untuk DemolitionCard
 };
 
 // Global state
@@ -50,7 +56,7 @@ static Phase phase = Phase::MENU;
 static Pending pending = Pending::NONE;
 static int lastD1 = 0, lastD2 = 0;
 static bool turnJustStarted = true;
-static bool gameOverShown = false;
+static bool gameStarted = false;
 
 // Pending context
 static PropertyTile *pendingProp = nullptr;
@@ -75,7 +81,17 @@ static string bangunColorGroup;
 // Gadai/Tebus candidates
 static vector<PropertyTile *> gadaiCandidates;
 
-// Helperzz
+// Akta select candidates (all board properties)
+static vector<PropertyTile *> aktaCandidates;
+
+// SkillCard interactive state
+static SkillCard *pendingSkillCard = nullptr;
+static SkillCard *pendingNewCard = nullptr;   // kartu yang belum bisa masuk (tangan penuh)
+static bool newPlayerTurnStarted = false;     // true hanya saat giliran pemain baru (bukan bonus double)
+static vector<Player *> lassoTargets;
+static vector<StreetTile *> demolitionCandidates;
+
+// ---- Formatters ----
 
 static string fmtMoney(int amount) {
     string s = to_string(amount);
@@ -89,27 +105,19 @@ static string fmtMoney(int amount) {
 
 static string statusStr(PlayerStatus s) {
     switch (s) {
-    case PlayerStatus::ACTIVE:
-        return "ACTIVE";
-    case PlayerStatus::JAILED:
-        return "JAILED";
-    case PlayerStatus::BANKRUPT:
-        return "BANKRUPT";
-    default:
-        return "UNKNOWN";
+    case PlayerStatus::ACTIVE:   return "ACTIVE";
+    case PlayerStatus::JAILED:   return "JAILED";
+    case PlayerStatus::BANKRUPT: return "BANKRUPT";
+    default:                     return "UNKNOWN";
     }
 }
 
 static string propStatusStr(int s) {
     switch (s) {
-    case 0:
-        return "BANK";
-    case 1:
-        return "OWNED";
-    case 2:
-        return "MORTGAGED";
-    default:
-        return "BANK";
+    case 0: return "BANK";
+    case 1: return "OWNED";
+    case 2: return "MORTGAGED";
+    default: return "BANK";
     }
 }
 
@@ -120,68 +128,56 @@ static string findOwnerName(int ownerId, const vector<Player *> &players) {
     return "";
 }
 
-// Update railroad/utility owned counts for a player
 static void updatePropertyCounts(Player *player) {
     int rrCount = 0, utCount = 0;
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        if (dynamic_cast<RailroadTile *>(prop))
-            rrCount++;
-        if (dynamic_cast<UtilityTile *>(prop))
-            utCount++;
+        if (dynamic_cast<RailroadTile *>(prop)) rrCount++;
+        if (dynamic_cast<UtilityTile *>(prop))  utCount++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        RailroadTile *rr = dynamic_cast<RailroadTile *>(prop);
-        if (rr)
+        if (auto *rr = dynamic_cast<RailroadTile *>(prop))
             rr->setrailroadOwnedCount(rrCount);
-        UtilityTile *ut = dynamic_cast<UtilityTile *>(prop);
-        if (ut)
+        if (auto *ut = dynamic_cast<UtilityTile *>(prop))
             ut->setUtilityOwnedCount(utCount);
     }
 }
 
-// Check and set monopoly for a player
 static void checkMonopoly(Player *player, Board *board) {
     map<string, int> totalInGroup;
     map<string, int> ownedInGroup;
-
     for (int i = 1; i <= board->getTotalTiles(); i++) {
-        StreetTile *st = dynamic_cast<StreetTile *>(board->getTileAt(i));
-        if (st)
+        if (auto *st = dynamic_cast<StreetTile *>(board->getTileAt(i)))
             totalInGroup[st->getColorGroup()]++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st)
+        if (auto *st = dynamic_cast<StreetTile *>(prop))
             ownedInGroup[st->getColorGroup()]++;
     }
     for (PropertyTile *prop : player->getOwnedProperties()) {
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) {
+        if (auto *st = dynamic_cast<StreetTile *>(prop)) {
             string cg = st->getColorGroup();
             st->setMonopolized(ownedInGroup[cg] == totalInGroup[cg]);
         }
     }
 }
 
-// Build GUI
+// ---- Build GUI GameState ----
 
 static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
     GameState gs;
     Board *board = engine.getBoard();
     auto players = engine.getAllPlayers();
 
-    // Players
     for (int i = 0; i < (int)players.size(); i++) {
         Player *p = players[i];
         PlayerInfo pi;
         pi.username = p->getUsername();
         pi.money = p->getMoney();
-        pi.position = p->getPosition() + 1; // GUI uses 1-based
+        pi.position = p->getPosition() + 1;
         pi.status = statusStr(p->getStatus());
         pi.jailTurnsLeft = p->getJailTurnsLeft();
         pi.shieldActive = p->isShieldActive();
-        pi.color = {0, 0, 0, 255}; // getPlayerColor handles this in GameWindow
-
+        pi.color = {0, 0, 0, 255};
         for (const SkillCard *card : p->getHandCards()) {
             CardInfo ci;
             ci.name = card->getCardName();
@@ -192,11 +188,9 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         gs.players.push_back(pi);
     }
 
-    // Tiles
     for (int i = 1; i <= board->getTotalTiles(); i++) {
         Tile *tile = board->getTileAt(i);
-        if (!tile)
-            continue;
+        if (!tile) continue;
 
         TileInfo ti;
         ti.index = i;
@@ -210,33 +204,21 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         ti.ownerName = "";
         ti.propStatus = "BANK";
 
-        StreetTile *st = dynamic_cast<StreetTile *>(tile);
-        RailroadTile *rr = dynamic_cast<RailroadTile *>(tile);
-        UtilityTile *ut = dynamic_cast<UtilityTile *>(tile);
-        PropertyTile *pt = dynamic_cast<PropertyTile *>(tile);
-
-        if (st) {
+        if (auto *st = dynamic_cast<StreetTile *>(tile)) {
             ti.tileType = "STREET";
             ti.colorGroup = st->getColorGroup();
             ti.price = st->getPrice();
             ti.propStatus = propStatusStr(st->getStatus());
             ti.ownerName = findOwnerName(st->getOwnerId(), players);
             int rl = st->getRentLevel();
-            if (rl == 5) {
-                ti.hasHotel = true;
-                ti.houseCount = 0;
-            } else {
-                ti.houseCount = rl;
-            }
-            ti.festivalMult = 1; // TODO: read actual festival mult
-        } else if (rr) {
+            if (rl == 5) { ti.hasHotel = true; ti.houseCount = 0; }
+            else          { ti.houseCount = rl; }
+        } else if (auto *rr = dynamic_cast<RailroadTile *>(tile)) {
             ti.tileType = "RAILROAD";
-            ti.price = 0;
             ti.propStatus = propStatusStr(rr->getStatus());
             ti.ownerName = findOwnerName(rr->getOwnerId(), players);
-        } else if (ut) {
+        } else if (auto *ut = dynamic_cast<UtilityTile *>(tile)) {
             ti.tileType = "UTILITY";
-            ti.price = 0;
             ti.propStatus = propStatusStr(ut->getStatus());
             ti.ownerName = findOwnerName(ut->getOwnerId(), players);
         } else if (dynamic_cast<CardTile *>(tile)) {
@@ -248,24 +230,19 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         } else {
             ti.tileType = "SPECIAL";
         }
-
         gs.tiles.push_back(ti);
     }
 
-    // Dice
     gs.dice.dice1 = lastD1;
     gs.dice.dice2 = lastD2;
     gs.dice.isDouble = (lastD1 > 0 && lastD1 == lastD2);
     gs.dice.hasRolled = engine.hasDiceRolled();
-
-    // Turn info
     gs.currentPlayerIndex = engine.getCurrentTurnIdx();
     gs.currentTurn = engine.getCurrentRound();
     gs.maxTurn = ConfigLoader::getInstance()->getMaxTurn();
     gs.gameOver = (phase == Phase::GAME_OVER);
     gs.winnerName = "";
 
-    // Logs (last 10)
     auto logEntries = logger.getLogs(10);
     for (auto &le : logEntries) {
         LogInfo li;
@@ -275,11 +252,10 @@ static GameState buildGameState(GameEngine &engine, TransactionLogger &logger) {
         li.detail = le.detail;
         gs.logs.push_back(li);
     }
-
     return gs;
 }
 
-// Helpers buat auction
+// ---- Auction helpers ----
 
 static void startAuction(PropertyTile *prop, GameEngine &engine,
                          GameWindow &window) {
@@ -306,11 +282,10 @@ static void startAuction(PropertyTile *prop, GameEngine &engine,
     }
 
     phase = Phase::AUCTION_ACTIVE;
-    // Show first bidder popup
     Player *bidder = auctionCtx.bidders[auctionCtx.currentIdx];
     int minBid = auctionCtx.highestBid + 1;
-    string msg = "Properti: " + prop->getName() + " (" + prop->getKode() +
-                 ")\n" + "Giliran: " + bidder->getUsername() + "\n" +
+    string msg = "Properti: " + prop->getName() + " (" + prop->getKode() + ")\n" +
+                 "Giliran: " + bidder->getUsername() + "\n" +
                  "Bid tertinggi: " +
                  (auctionCtx.highestBidder
                       ? fmtMoney(auctionCtx.highestBid) + " (" +
@@ -322,11 +297,9 @@ static void startAuction(PropertyTile *prop, GameEngine &engine,
     ps.type = PopupType::AUCTION;
     ps.title = "LELANG: " + prop->getKode();
     ps.message = msg;
-    ps.options = {"BID +" + to_string(max(50, minBid)),
-                  "BID +" + to_string(max(100, minBid + 50)), "PASS"};
+    ps.options = {"BID " + fmtMoney(max(50, minBid)),
+                  "BID " + fmtMoney(max(100, minBid + 50)), "PASS"};
     window.showPopup(ps);
-
-    cout << "\n[LELANG] Properti " << prop->getName() << " dilelang!" << endl;
 }
 
 static void advanceAuction(int choice, GameEngine &engine, GameWindow &window) {
@@ -335,37 +308,26 @@ static void advanceAuction(int choice, GameEngine &engine, GameWindow &window) {
                         max(100, auctionCtx.highestBid + 51)};
 
     if (choice == 2) {
-        // PASS
         auctionCtx.consecutivePasses++;
-        cout << "[LELANG] " << bidder->getUsername() << " PASS." << endl;
     } else {
-        // BID
         int bidAmount = bidAmounts[choice];
         if (bidAmount <= bidder->getMoney()) {
             auctionCtx.highestBid = bidAmount;
             auctionCtx.highestBidder = bidder;
             auctionCtx.consecutivePasses = 0;
-            cout << "[LELANG] " << bidder->getUsername() << " BID "
-                 << fmtMoney(bidAmount) << endl;
         } else {
-            cout << "[LELANG] Uang tidak cukup! Otomatis PASS." << endl;
             auctionCtx.consecutivePasses++;
         }
     }
 
-    // Check if auction ends: consecutive passes >= bidders.size() - 1
     if (auctionCtx.consecutivePasses >= (int)auctionCtx.bidders.size() - 1 &&
         auctionCtx.highestBidder) {
-        // Auction won
         *auctionCtx.highestBidder -= auctionCtx.highestBid;
         auctionCtx.property->setOwnerId(auctionCtx.highestBidder->getId());
         auctionCtx.property->setStatus(1);
         auctionCtx.highestBidder->addProperty(auctionCtx.property);
         updatePropertyCounts(auctionCtx.highestBidder);
         checkMonopoly(auctionCtx.highestBidder, engine.getBoard());
-
-        cout << "[LELANG] Pemenang: " << auctionCtx.highestBidder->getUsername()
-             << " dengan harga " << fmtMoney(auctionCtx.highestBid) << endl;
 
         PopupState ps;
         ps.type = PopupType::AUCTION;
@@ -376,22 +338,26 @@ static void advanceAuction(int choice, GameEngine &engine, GameWindow &window) {
         window.showPopup(ps);
 
         auctionCtx.active = false;
-        // Will go to POST_ROLL when user clicks OK
         return;
     }
 
-    // If all passed without any bid and only one remains, force them to bid
     if (auctionCtx.consecutivePasses >= (int)auctionCtx.bidders.size() &&
         !auctionCtx.highestBidder) {
-        // Force last non-passer — simplified: reset passes
-        auctionCtx.consecutivePasses = 0;
+        // Semua pemain pass tanpa ada yang bid — lelang berakhir tanpa pemenang
+        PopupState ps;
+        ps.type = PopupType::AUCTION;
+        ps.title = "LELANG BERAKHIR";
+        ps.message = "Tidak ada penawar.\nProperti " +
+                     auctionCtx.property->getName() + " tidak terjual.";
+        ps.options = {"OK"};
+        window.showPopup(ps);
+        auctionCtx.active = false;
+        return;
     }
 
-    // Next bidder
     auctionCtx.currentIdx =
         (auctionCtx.currentIdx + 1) % auctionCtx.bidders.size();
     Player *nextBidder = auctionCtx.bidders[auctionCtx.currentIdx];
-
     int minBid = auctionCtx.highestBid + 1;
     string msg = "Properti: " + auctionCtx.property->getName() + "\n" +
                  "Giliran: " + nextBidder->getUsername() + "\n" +
@@ -411,30 +377,21 @@ static void advanceAuction(int choice, GameEngine &engine, GameWindow &window) {
     window.showPopup(ps);
 }
 
-// Tile Effect Processing
+// ---- Tile Effect Processing ----
 
 static void processTileEffect(GameEngine &engine, GameWindow &window,
                               TransactionLogger &logger) {
     Player *p = engine.getCurrentPlayer();
     Board *board = engine.getBoard();
-    Tile *tile = board->getTileAt(p->getPosition() + 1); // Board is 1-indexed
-    if (!tile) {
-        phase = Phase::POST_ROLL;
-        return;
-    }
+    Tile *tile = board->getTileAt(p->getPosition() + 1);
+    if (!tile) { phase = Phase::POST_ROLL; return; }
 
     EffectType effect = tile->onLanded(*p);
-
-    cout << "[INFO] " << p->getUsername() << " mendarat di " << tile->getName()
-         << " (" << tile->getKode() << ")" << endl;
 
     switch (effect) {
     case EffectType::OFFER_BUY: {
         PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) {
-            phase = Phase::POST_ROLL;
-            break;
-        }
+        if (!prop) { phase = Phase::POST_ROLL; break; }
         pendingProp = prop;
 
         if (p->getMoney() >= prop->getPrice()) {
@@ -446,12 +403,11 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
                          "Harga: " + fmtMoney(prop->getPrice()) + "\n" +
                          "Uang kamu: " + fmtMoney(p->getMoney()) + "\n" +
                          "Beli properti ini?";
-            ps.options = {"Ya, Beli!", "Tidak"};
+            ps.options = {"Ya, Beli!", "Tidak (Lelang)"};
             window.showPopup(ps);
             pending = Pending::BUY_PROPERTY;
             phase = Phase::EFFECT_PENDING;
         } else {
-            cout << "[INFO] Uang tidak cukup untuk membeli. Dilelang!" << endl;
             startAuction(prop, engine, window);
         }
         break;
@@ -464,69 +420,43 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
             p->addProperty(prop);
             updatePropertyCounts(p);
             checkMonopoly(p, board);
-            cout << "[BELI] " << prop->getName() << " otomatis menjadi milik "
-                 << p->getUsername() << "!" << endl;
             logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                            LogActionType::BUY,
-                            prop->getName() + " (Otomatis)");
+                            LogActionType::BUY, prop->getName() + " (Otomatis)");
         }
         phase = Phase::POST_ROLL;
         break;
     }
     case EffectType::PAY_RENT: {
         PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) {
-            phase = Phase::POST_ROLL;
-            break;
-        }
+        if (!prop) { phase = Phase::POST_ROLL; break; }
 
         Player *owner = nullptr;
         for (Player *pl : engine.getAllPlayers())
-            if (pl->getId() == prop->getOwnerId()) {
-                owner = pl;
-                break;
-            }
-
-        if (!owner) {
-            phase = Phase::POST_ROLL;
-            break;
-        }
+            if (pl->getId() == prop->getOwnerId()) { owner = pl; break; }
+        if (!owner) { phase = Phase::POST_ROLL; break; }
 
         int diceTotal = lastD1 + lastD2;
         int rent = prop->calcRent(diceTotal);
 
-        // Shield protection
         if (p->isShieldActive()) {
             p->setShieldActive(false);
-            cout << "[SHIELD] ShieldCard melindungi dari sewa "
-                 << fmtMoney(rent) << "!" << endl;
             rent = 0;
         }
-        // Discount
         if (p->getActiveDiscountPercent() > 0) {
             int disc = rent * p->getActiveDiscountPercent() / 100;
             rent -= disc;
-            cout << "[DISKON] Diskon " << p->getActiveDiscountPercent()
-                 << "% diterapkan! Sewa: " << fmtMoney(rent) << endl;
         }
 
         if (rent > 0) {
             try {
                 *p -= rent;
                 *owner += rent;
-                cout << "[SEWA] " << p->getUsername() << " bayar "
-                     << fmtMoney(rent) << " ke " << owner->getUsername()
-                     << endl;
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::RENT,
                                 "Bayar " + fmtMoney(rent) + " ke " +
                                     owner->getUsername() + " (" +
                                     prop->getKode() + ")");
             } catch (NotEnoughMoneyException &) {
-                // Bangkrut ke pemain lain
-                cout << "[BANGKRUT] " << p->getUsername()
-                     << " bangkrut! Semua aset ke " << owner->getUsername()
-                     << endl;
                 int sisaUang = p->getMoney();
                 *owner += sisaUang;
                 for (PropertyTile *op : p->getOwnedProperties()) {
@@ -546,18 +476,15 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
     }
     case EffectType::PAY_TAX_CHOICE: {
         TaxTile *tax = dynamic_cast<TaxTile *>(tile);
-        if (!tax) {
-            phase = Phase::POST_ROLL;
-            break;
-        }
+        if (!tax) { phase = Phase::POST_ROLL; break; }
         pendingTax = tax;
 
         PopupState ps;
         ps.type = PopupType::TAX_CHOICE;
         ps.title = "PAJAK PENGHASILAN";
-        ps.message = "Pilih metode pembayaran:\n" + string("1. Bayar flat ") +
-                     fmtMoney(tax->getFlatAmount()) + "\n" + "2. Bayar " +
-                     to_string((int)tax->getPercentageRate()) +
+        ps.message = "Pilih metode pembayaran:\n" +
+                     string("1. Bayar flat ") + fmtMoney(tax->getFlatAmount()) + "\n" +
+                     "2. Bayar " + to_string((int)tax->getPercentageRate()) +
                      "% dari kekayaan\n" +
                      "(Pilih SEBELUM menghitung kekayaan!)";
         ps.options = {"Flat " + fmtMoney(tax->getFlatAmount()), "Persentase"};
@@ -568,21 +495,13 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
     }
     case EffectType::PAY_TAX_FLAT: {
         TaxTile *tax = dynamic_cast<TaxTile *>(tile);
-        if (!tax) {
-            phase = Phase::POST_ROLL;
-            break;
-        }
-
+        if (!tax) { phase = Phase::POST_ROLL; break; }
         int amount = tax->getFlatAmount();
         try {
             *p -= amount;
-            cout << "[PAJAK] " << p->getUsername() << " bayar PBM "
-                 << fmtMoney(amount) << endl;
             logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                             LogActionType::TAX, "PBM " + fmtMoney(amount));
         } catch (NotEnoughMoneyException &) {
-            cout << "[BANGKRUT] " << p->getUsername()
-                 << " bangkrut karena pajak!" << endl;
             p->declareBankruptcy();
             logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                             LogActionType::BANKRUPT, "Bangkrut PBM");
@@ -591,123 +510,76 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::DRAW_CHANCE: {
-        cout << "[KARTU] " << p->getUsername() << " mengambil Kartu Kesempatan!"
-             << endl;
-        // TODO: Implementasi draw dari ChanceDeck (koordinasi dengan Orang 4 -
-        // Miguel) Sementara: efek random sederhana
-        random_device rd;
-        mt19937 gen(rd());
-        uniform_int_distribution<> dis(0, 2);
-        int card = dis(gen);
-        if (card == 0) {
-            // Pergi ke stasiun terdekat
-            cout << "[KESEMPATAN] Pergi ke stasiun terdekat!" << endl;
+        ActionCard *drawn = engine.drawChanceCard();
+        if (!drawn) { phase = Phase::POST_ROLL; break; }
+        string cardName = drawn->getCardName();
+        ActionCardEffect eff = drawn->execute(*p, engine);
+        engine.discardChanceCard(drawn);
+
+        if (eff == ActionCardEffect::CHANCE_NEAREST_STATION) {
             int pos = p->getPosition();
-            int stations[] = {5, 15, 25,
-                              35}; // 0-indexed positions of railroads
+            int stations[] = {5, 15, 25, 35};
             int nearest = stations[0];
             for (int s : stations)
-                if (s > pos) {
-                    nearest = s;
-                    break;
-                }
+                if (s > pos) { nearest = s; break; }
             p->move((nearest - pos + 40) % 40);
-        } else if (card == 1) {
-            cout << "[KESEMPATAN] Mundur 3 petak!" << endl;
-            p->move(37); // 40 - 3 = 37 (mod 40)
-        } else {
-            cout << "[KESEMPATAN] Masuk Penjara!" << endl;
+        } else if (eff == ActionCardEffect::CHANCE_MOVE_BACK_3) {
+            p->move(37); // 37 ≡ -3 mod 40
+        } else if (eff == ActionCardEffect::CHANCE_GO_TO_JAIL) {
             p->goToJail();
         }
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::CARD, "Kartu Kesempatan");
+                        LogActionType::CARD, "Kesempatan: " + cardName);
         phase = Phase::POST_ROLL;
         break;
     }
     case EffectType::DRAW_COMMUNITY: {
-        cout << "[KARTU] " << p->getUsername() << " mengambil Kartu Dana Umum!"
-             << endl;
-        // TODO: Implementasi draw dari CommunityDeck (koordinasi dengan Orang 4
-        // - Miguel)
-        random_device rd;
-        mt19937 gen(rd());
-        uniform_int_distribution<> dis(0, 2);
-        int card = dis(gen);
+        ActionCard *drawn = engine.drawCommunityCard();
+        if (!drawn) { phase = Phase::POST_ROLL; break; }
+        string cardName = drawn->getCardName();
+        ActionCardEffect eff = drawn->execute(*p, engine);
+        engine.discardCommunityCard(drawn);
+
         auto allPlayers = engine.getAllPlayers();
-        if (card == 0) {
-            // Ulang tahun: dapat M100 dari setiap pemain
-            cout << "[DANA UMUM] Selamat ulang tahun! Dapat M100 dari setiap "
-                    "pemain."
-                 << endl;
+        if (eff == ActionCardEffect::COMMUNITY_BIRTHDAY) {
+            // Ulang tahun: terima M100 dari tiap pemain lain
             for (Player *other : allPlayers) {
-                if (other != p &&
-                    other->getStatus() != PlayerStatus::BANKRUPT) {
-                    try {
-                        *other -= 100;
-                        *p += 100;
-                    } catch (...) {
-                    }
+                if (other != p && other->getStatus() != PlayerStatus::BANKRUPT) {
+                    try { *other -= 100; *p += 100; } catch (...) {}
                 }
             }
-        } else if (card == 1) {
-            // Biaya dokter M700
-            cout << "[DANA UMUM] Biaya dokter. Bayar M700." << endl;
-            try {
-                *p -= 700;
-            } catch (NotEnoughMoneyException &) {
-                cout << "[BANGKRUT] Tidak mampu bayar!" << endl;
-                p->declareBankruptcy();
-            }
-        } else {
-            // Nyaleg: bayar M200 ke setiap pemain
-            cout << "[DANA UMUM] Mau nyaleg. Bayar M200 kepada setiap pemain."
-                 << endl;
+        } else if (eff == ActionCardEffect::COMMUNITY_DOCTOR) {
+            // Dokter: bayar M700
+            try { *p -= 700; }
+            catch (NotEnoughMoneyException &) { p->declareBankruptcy(); }
+        } else if (eff == ActionCardEffect::COMMUNITY_ELECTION) {
+            // Pemilu: bayar M200 ke tiap pemain lain
             for (Player *other : allPlayers) {
-                if (other != p &&
-                    other->getStatus() != PlayerStatus::BANKRUPT) {
-                    try {
-                        *p -= 200;
-                        *other += 200;
-                    } catch (NotEnoughMoneyException &) {
-                        cout << "[BANGKRUT] Tidak mampu bayar!" << endl;
-                        p->declareBankruptcy();
-                        break;
+                if (other != p && other->getStatus() != PlayerStatus::BANKRUPT) {
+                    try { *p -= 200; *other += 200; }
+                    catch (NotEnoughMoneyException &) {
+                        p->declareBankruptcy(); break;
                     }
                 }
             }
         }
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::CARD, "Kartu Dana Umum");
+                        LogActionType::CARD, "Dana Umum: " + cardName);
         phase = Phase::POST_ROLL;
         break;
     }
     case EffectType::FESTIVAL_TRIGGER: {
         auto props = p->getOwnedProperties();
-        if (props.empty()) {
-            cout << "[FESTIVAL] Kamu tidak punya properti untuk festival."
-                 << endl;
-            phase = Phase::POST_ROLL;
-            break;
-        }
-        // Build list of owned properties for popup
-        string msg =
-            "Pilih properti untuk efek festival (sewa x2, 3 giliran):\n";
         vector<string> opts;
         for (auto *prop : props) {
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            if (st) {
+            if (auto *st = dynamic_cast<StreetTile *>(prop))
                 opts.push_back(st->getKode() + " - " + st->getName());
-            }
         }
-        if (opts.empty()) {
-            cout << "[FESTIVAL] Tidak ada Street untuk festival." << endl;
-            phase = Phase::POST_ROLL;
-            break;
-        }
+        if (opts.empty()) { phase = Phase::POST_ROLL; break; }
         PopupState ps;
         ps.type = PopupType::FESTIVAL;
         ps.title = "FESTIVAL";
-        ps.message = msg;
+        ps.message = "Pilih properti untuk efek festival (sewa x2, 3 giliran):";
         ps.options = opts;
         window.showPopup(ps);
         pending = Pending::FESTIVAL;
@@ -715,21 +587,29 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::SEND_TO_JAIL: {
-        cout << "[PENJARA] " << p->getUsername() << " dikirim ke penjara!"
-             << endl;
         p->goToJail();
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::UNKNOWN, "Mendarat di Pergi ke Penjara");
+                        LogActionType::UNKNOWN, "Masuk penjara (Pergi ke Penjara)");
         phase = Phase::POST_ROLL;
         break;
     }
     case EffectType::AWARD_SALARY: {
-        int salary = 200 /* TODO: needs ConfigLoader::getGoSalary() getter */;
+        int salary = 200;
         *p += salary;
-        cout << "[GO] " << p->getUsername() << " mendarat di GO! Menerima "
-             << fmtMoney(salary) << endl;
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::UNKNOWN, "Mendarat di GO");
+                        LogActionType::GO, "Mendarat di GO, terima M200");
+        // Dapat kartu skill saat melewati/mendarat di GO
+        SkillCard *drawn = engine.drawSkillCard();
+        if (drawn) {
+            try {
+                p->addCard(drawn);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "Dapat kartu: " + drawn->getCardName());
+            } catch (...) {
+                // Tangan penuh (3 kartu), kembalikan ke deck
+                engine.discardSkillCard(drawn);
+            }
+        }
         phase = Phase::POST_ROLL;
         break;
     }
@@ -742,16 +622,35 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
     }
 }
 
-// Popup response handler
+// ---- Popup response handler ----
+
+static bool exitConfirmPending = false;
 
 static void handlePopupResponse(int choice, GameEngine &engine,
                                 GameWindow &window, TransactionLogger &logger) {
-    Player *p = engine.getCurrentPlayer();
+    // -1 = user cancelled via list popup BATAL button
+    if (choice < 0) {
+        window.closePopup();
+        pending = Pending::NONE;
+        return;
+    }
 
-    // If auction is active, route to auction handler
+    Player *p = gameStarted ? engine.getCurrentPlayer() : nullptr;
+
+    // Exit confirmation (SAVE popup type repurposed for exit confirm)
+    if (pending == Pending::EXIT_CONFIRM) {
+        window.closePopup();
+        if (choice == 0) {
+            // User confirmed exit — set flag, main loop will break
+            exitConfirmPending = true;
+        }
+        pending = Pending::NONE;
+        return;
+    }
+
+    // Auction routing
     if (phase == Phase::AUCTION_ACTIVE) {
         if (!auctionCtx.active) {
-            // Auction result OK button
             window.closePopup();
             phase = Phase::POST_ROLL;
             return;
@@ -760,11 +659,12 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         return;
     }
 
+    if (!p) { window.closePopup(); return; }
+
     switch (pending) {
     case Pending::BUY_PROPERTY: {
         window.closePopup();
         if (choice == 0 && pendingProp) {
-            // Ya, beli
             try {
                 *p -= pendingProp->getPrice();
                 pendingProp->setOwnerId(p->getId());
@@ -772,23 +672,17 @@ static void handlePopupResponse(int choice, GameEngine &engine,
                 p->addProperty(pendingProp);
                 updatePropertyCounts(p);
                 checkMonopoly(p, engine.getBoard());
-                cout << "[BELI] " << p->getUsername() << " membeli "
-                     << pendingProp->getName() << " seharga "
-                     << fmtMoney(pendingProp->getPrice()) << endl;
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::BUY,
                                 "Beli " + pendingProp->getName() + " " +
                                     fmtMoney(pendingProp->getPrice()));
             } catch (NotEnoughMoneyException &) {
-                cout << "[ERROR] Uang tidak cukup!" << endl;
                 startAuction(pendingProp, engine, window);
                 pending = Pending::NONE;
                 return;
             }
             phase = Phase::POST_ROLL;
         } else {
-            // Tidak beli → lelang
-            cout << "[INFO] Properti dilelang!" << endl;
             startAuction(pendingProp, engine, window);
         }
         pending = Pending::NONE;
@@ -802,20 +696,13 @@ static void handlePopupResponse(int choice, GameEngine &engine,
                 amount = pendingTax->getFlatAmount();
             } else {
                 int wealth = pendingTax->computeNetWorth(*p);
-                amount =
-                    (int)(wealth * pendingTax->getPercentageRate() / 100.0);
-                cout << "[PAJAK] Kekayaan: " << fmtMoney(wealth) << ", Pajak "
-                     << (int)pendingTax->getPercentageRate()
-                     << "% = " << fmtMoney(amount) << endl;
+                amount = (int)(wealth * pendingTax->getPercentageRate() / 100.0);
             }
             try {
                 *p -= amount;
-                cout << "[PAJAK] " << p->getUsername() << " bayar PPH "
-                     << fmtMoney(amount) << endl;
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::TAX, "PPH " + fmtMoney(amount));
             } catch (NotEnoughMoneyException &) {
-                cout << "[BANGKRUT] Tidak mampu bayar pajak!" << endl;
                 p->declareBankruptcy();
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::BANKRUPT, "Bangkrut PPH");
@@ -830,12 +717,9 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         auto props = p->getOwnedProperties();
         int streetIdx = 0;
         for (auto *prop : props) {
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            if (st) {
+            if (auto *st = dynamic_cast<StreetTile *>(prop)) {
                 if (streetIdx == choice) {
                     st->setFestivalEffect(2);
-                    cout << "[FESTIVAL] Festival aktif di " << st->getName()
-                         << "! Sewa x2 selama 3 giliran." << endl;
                     logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                     LogActionType::FESTIVAL, st->getName());
                     break;
@@ -850,28 +734,42 @@ static void handlePopupResponse(int choice, GameEngine &engine,
     case Pending::JAIL_CHOICE: {
         window.closePopup();
         if (choice == 0) {
-            // Bayar denda
-            int fine = 50 /* TODO: needs ConfigLoader::getJailFine() getter */;
+            int fine = 50;
             try {
                 *p -= fine;
-                p->move(0); // Stay, but set status to ACTIVE handled below
-                // Need to release from jail — requires setStatus or equivalent
-                // Since Player doesn't have setStatus, we work around it
-                cout << "[PENJARA] " << p->getUsername() << " bayar denda "
-                     << fmtMoney(fine) << " dan bebas!" << endl;
+                p->setStatus(PlayerStatus::ACTIVE);
+                p->setJailTurnsLeft(0);
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                                LogActionType::UNKNOWN, fmtMoney(fine));
-                // Player is still JAILED — rollDice will handle double check
-                // We set phase to AWAITING_ACTION so player can roll
+                                LogActionType::UNKNOWN, "Bayar denda penjara " + fmtMoney(fine));
                 phase = Phase::AWAITING_ACTION;
             } catch (NotEnoughMoneyException &) {
-                cout << "[BANGKRUT] Tidak mampu bayar denda!" << endl;
                 p->declareBankruptcy();
                 phase = Phase::POST_ROLL;
             }
         } else {
-            // Coba lempar double
-            phase = Phase::AWAITING_ACTION; // Let them roll
+            // Pilihan "Lempar Dadu" — langsung lempar tanpa klik lagi
+            random_device rd2;
+            mt19937 gen2(rd2());
+            uniform_int_distribution<> dis2(1, 6);
+            lastD1 = dis2(gen2);
+            lastD2 = dis2(gen2);
+            try {
+                engine.rollDice(lastD1, lastD2);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::ROLL,
+                                to_string(lastD1) + "+" + to_string(lastD2) +
+                                    "=" + to_string(lastD1 + lastD2));
+                if (engine.getCurrentPlayer()->getStatus() == PlayerStatus::JAILED) {
+                    // Tidak dapat double, tetap di penjara
+                    phase = Phase::POST_ROLL;
+                } else {
+                    // Double! Bebas dari penjara, proses petak
+                    phase = Phase::ROLLED;
+                    processTileEffect(engine, window, logger);
+                }
+            } catch (...) {
+                phase = Phase::AWAITING_ACTION;
+            }
         }
         pending = Pending::NONE;
         break;
@@ -882,8 +780,6 @@ static void handlePopupResponse(int choice, GameEngine &engine,
             PropertyTile *prop = gadaiCandidates[choice];
             prop->mortgage();
             *p += prop->getmortgageValue();
-            cout << "[GADAI] " << prop->getName() << " digadaikan. Terima "
-                 << fmtMoney(prop->getmortgageValue()) << endl;
             logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                             LogActionType::MORTGAGE, prop->getName());
         }
@@ -894,16 +790,14 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         window.closePopup();
         if (choice >= 0 && choice < (int)gadaiCandidates.size()) {
             PropertyTile *prop = gadaiCandidates[choice];
-            int cost = prop->getPrice(); // Harga beli penuh untuk tebus
+            int cost = prop->getPrice();
             try {
                 *p -= cost;
                 prop->unmortgage();
-                cout << "[TEBUS] " << prop->getName() << " ditebus seharga "
-                     << fmtMoney(cost) << endl;
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::UNMORTGAGE, prop->getName());
             } catch (NotEnoughMoneyException &) {
-                cout << "[ERROR] Uang tidak cukup!" << endl;
+                // Uang tidak cukup, batal
             }
         }
         pending = Pending::NONE;
@@ -911,45 +805,31 @@ static void handlePopupResponse(int choice, GameEngine &engine,
     }
     case Pending::BANGUN_COLOR_SELECT: {
         window.closePopup();
-        // Build list of streets in selected color group
         bangunCandidates.clear();
         auto props = p->getOwnedProperties();
-        // Find all color groups that are monopolized
         map<string, vector<StreetTile *>> monopolized;
         for (auto *prop : props) {
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            if (st && st->getRentLevel() < 5) { // Not max
-                monopolized[st->getColorGroup()].push_back(st);
-            }
+            if (auto *st = dynamic_cast<StreetTile *>(prop))
+                if (st->getRentLevel() < 5)
+                    monopolized[st->getColorGroup()].push_back(st);
         }
-        // Get the chosen color group
         int idx = 0;
         string chosenColor;
         for (auto &[color, streets] : monopolized) {
-            if (idx == choice) {
-                chosenColor = color;
-                break;
-            }
+            if (idx == choice) { chosenColor = color; break; }
             idx++;
         }
+        if (chosenColor.empty()) { pending = Pending::NONE; break; }
 
-        if (chosenColor.empty()) {
-            pending = Pending::NONE;
-            break;
-        }
-
-        // Find buildable tiles (even distribution rule)
         auto &streets = monopolized[chosenColor];
         int minLevel = 999;
-        for (auto *st : streets)
-            minLevel = min(minLevel, st->getRentLevel());
+        for (auto *st : streets) minLevel = min(minLevel, st->getRentLevel());
 
         vector<string> opts;
         for (auto *st : streets) {
             if (st->getRentLevel() <= minLevel && st->getRentLevel() < 5) {
                 bangunCandidates.push_back(st);
-                string label =
-                    st->getKode() + " Lv" + to_string(st->getRentLevel());
+                string label = st->getKode() + " Lv" + to_string(st->getRentLevel());
                 if (st->getRentLevel() == 4)
                     label += " -> Hotel " + fmtMoney(st->getHotelCost());
                 else
@@ -957,12 +837,7 @@ static void handlePopupResponse(int choice, GameEngine &engine,
                 opts.push_back(label);
             }
         }
-
-        if (opts.empty()) {
-            cout << "[BANGUN] Tidak ada yang bisa dibangun." << endl;
-            pending = Pending::NONE;
-            break;
-        }
+        if (opts.empty()) { pending = Pending::NONE; break; }
 
         PopupState ps;
         ps.type = PopupType::BUY_PROPERTY;
@@ -981,18 +856,14 @@ static void handlePopupResponse(int choice, GameEngine &engine,
                 if (st->getRentLevel() == 4) {
                     *p -= st->getHotelCost();
                     st->buildHotel();
-                    cout << "[BANGUN] Hotel dibangun di " << st->getName()
-                         << "!" << endl;
                 } else {
                     *p -= st->getHouseCost();
                     st->buildHouse();
-                    cout << "[BANGUN] Rumah dibangun di " << st->getName()
-                         << "! Level: " << st->getRentLevel() << endl;
                 }
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
                                 LogActionType::BUILD, st->getName());
             } catch (NotEnoughMoneyException &) {
-                cout << "[ERROR] Uang tidak cukup!" << endl;
+                // Uang tidak cukup
             }
         }
         pending = Pending::NONE;
@@ -1000,27 +871,142 @@ static void handlePopupResponse(int choice, GameEngine &engine,
     }
     case Pending::DROP_CARD: {
         window.closePopup();
-        if (choice >= 0 && choice < (int)p->getHandCards().size()) {
-            cout << "[KARTU] " << p->getHandCards()[choice]->getCardName()
-                 << " dibuang." << endl;
+        if (choice >= 0 && choice < (int)p->getHandCards().size())
             p->removeCard(choice);
+        // Jika drop dipicu oleh kartu awal giliran, masukkan kartu baru
+        if (pendingNewCard) {
+            try {
+                p->addCard(pendingNewCard);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD,
+                                "Dapat kartu awal giliran: " + pendingNewCard->getCardName());
+            } catch (...) {
+                engine.discardSkillCard(pendingNewCard);
+            }
+            pendingNewCard = nullptr;
+            // Cek jail popup yang tadi ditunda
+            if (p->getStatus() == PlayerStatus::JAILED) {
+                int fine = 50;
+                PopupState ps;
+                ps.type = PopupType::JAIL;
+                ps.title = "PENJARA";
+                ps.message = p->getUsername() + " sedang di penjara.\n" +
+                             "Sisa giliran percobaan: " +
+                             to_string(p->getJailTurnsLeft()) + "\n" +
+                             "Bayar denda " + fmtMoney(fine) +
+                             " atau coba lempar double?";
+                ps.options = {"Bayar Denda " + fmtMoney(fine), "Lempar Dadu"};
+                window.showPopup(ps);
+                pending = Pending::JAIL_CHOICE;
+                phase = Phase::EFFECT_PENDING;
+                return;
+            }
         }
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::AKTA_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < (int)aktaCandidates.size()) {
+            PropertyTile *prop = aktaCandidates[choice];
+            vector<string> lines;
+            lines.push_back("+================================+");
+            lines.push_back("  AKTA KEPEMILIKAN");
+
+            if (auto *st = dynamic_cast<StreetTile *>(prop)) {
+                lines.push_back("  [" + st->getColorGroup() + "] " + st->getName() + " (" + st->getKode() + ")");
+                lines.push_back("+================================+");
+                lines.push_back("  Harga Beli : " + fmtMoney(st->getPrice()));
+                lines.push_back("  Nilai Gadai: " + fmtMoney(st->getmortgageValue()));
+                lines.push_back("  Biaya Rumah: " + fmtMoney(st->getHouseCost()));
+                lines.push_back("  Biaya Hotel: " + fmtMoney(st->getHotelCost()));
+                lines.push_back("  Level Bgn  : " + to_string(st->getRentLevel()));
+            } else {
+                lines.push_back("  " + prop->getName() + " (" + prop->getKode() + ")");
+                lines.push_back("+================================+");
+                lines.push_back("  Nilai Gadai: " + fmtMoney(prop->getmortgageValue()));
+            }
+            lines.push_back("  Status     : " + propStatusStr(prop->getStatus()));
+            if (prop->getOwnerId() != -1) {
+                lines.push_back("  Pemilik    : " +
+                                findOwnerName(prop->getOwnerId(), engine.getAllPlayers()));
+            }
+            window.showPropertyInfo("AKTA: " + prop->getKode(), lines);
+        }
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::TELEPORT_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < engine.getBoard()->getTotalTiles() && pendingSkillCard) {
+            // choice 0 = tile 1 = position 0
+            p->setPosition(choice);
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "TeleportCard → petak " + to_string(choice + 1));
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+            engine.markDiceRolled(); // kartu ini menggantikan lemparan dadu
+            phase = Phase::ROLLED;
+            processTileEffect(engine, window, logger);
+        }
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::LASSO_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < (int)lassoTargets.size() && pendingSkillCard) {
+            Player *target = lassoTargets[choice];
+            int myPos = p->getPosition();
+            target->setPosition(myPos);
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "LassoCard: " + target->getUsername() +
+                                " ditarik ke petak " + to_string(myPos + 1));
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+        }
+        lassoTargets.clear();
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::DEMOLITION_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < (int)demolitionCandidates.size() && pendingSkillCard) {
+            StreetTile *st = demolitionCandidates[choice];
+            st->removeOneBuilding();
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "DemolitionCard: bangunan di " + st->getKode() + " dihancurkan");
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+        }
+        demolitionCandidates.clear();
         pending = Pending::NONE;
         break;
     }
     default:
         window.closePopup();
-        if (phase == Phase::GAME_OVER) {
-            // Do nothing, game is over
-        } else {
+        if (phase != Phase::GAME_OVER)
             phase = Phase::POST_ROLL;
-        }
         pending = Pending::NONE;
         break;
     }
 }
 
-// Cek win condition
+// ---- Win condition check ----
 
 static bool checkGameOver(GameEngine &engine, GameWindow &window) {
     auto players = engine.getAllPlayers();
@@ -1035,7 +1021,6 @@ static bool checkGameOver(GameEngine &engine, GameWindow &window) {
 
     int maxTurn = ConfigLoader::getInstance()->getMaxTurn();
 
-    // Bankruptcy win
     if (activePlayers == 1 && lastActive) {
         phase = Phase::GAME_OVER;
         PopupState ps;
@@ -1045,131 +1030,101 @@ static bool checkGameOver(GameEngine &engine, GameWindow &window) {
                      "\n(Semua pemain lain bangkrut)";
         ps.options = {"OK"};
         window.showPopup(ps);
-        cout << "\n========================================" << endl;
-        cout << "  PEMENANG: " << lastActive->getUsername() << endl;
-        cout << "========================================" << endl;
         return true;
     }
 
-    // Max turn win
     if (maxTurn > 0 && engine.getCurrentRound() > maxTurn) {
         phase = Phase::GAME_OVER;
-        // Find richest player
         Player *winner = nullptr;
         for (Player *p : players) {
-            if (p->getStatus() != PlayerStatus::BANKRUPT) {
+            if (p->getStatus() != PlayerStatus::BANKRUPT)
                 if (!winner || p->getWealth() > winner->getWealth())
                     winner = p;
-            }
         }
         string winnerName = winner ? winner->getUsername() : "???";
         PopupState ps;
         ps.type = PopupType::WINNER;
         ps.title = "BATAS GILIRAN TERCAPAI!";
-        ps.message =
-            "Pemenang: " + winnerName + "\n" +
-            (winner ? "Kekayaan: " + fmtMoney(winner->getWealth()) : "");
+        ps.message = "Pemenang: " + winnerName + "\n" +
+                     (winner ? "Kekayaan: " + fmtMoney(winner->getWealth()) : "");
         ps.options = {"OK"};
         window.showPopup(ps);
-        cout << "\n========================================" << endl;
-        cout << "  BATAS TURN! PEMENANG: " << winnerName << endl;
-        cout << "========================================" << endl;
         return true;
     }
-
     return false;
 }
 
+// ============================================================
 // MAIN
+// ============================================================
 
 int main() {
-    // ===== 1. SETUP TERMINAL: Menu & Input Pemain =====
-    cout << "============================================" << endl;
-    cout << "     pOOPs: NIMONSPOLI" << endl;
-    cout << "============================================" << endl;
-    cout << "1. New Game" << endl;
-    cout << "2. Load Game" << endl;
-    cout << "Pilihan: ";
-
-    int menuChoice;
-    cin >> menuChoice;
-
-    // Load config
+    // Load config first (before window - needed for engine setup)
     ConfigLoader *config = ConfigLoader::getInstance();
     config->setConfigFilePath("config");
     try {
         config->loadAllConfigs();
-        cout << "[CONFIG] Konfigurasi berhasil dimuat." << endl;
     } catch (exception &e) {
-        cerr << "[ERROR] Gagal memuat konfigurasi: " << e.what() << endl;
-        return 1;
+        // Config load failed - we'll show a blank game, not fatal for window
+        (void)e;
     }
 
     Board *board = Board::getInstance();
     TransactionLogger logger;
     GameEngine engine(board, &logger);
 
-    vector<string> playerNames;
-
-    if (menuChoice == 1) {
-        int numPlayers;
-        cout << "Jumlah pemain (2-4): ";
-        cin >> numPlayers;
-        if (numPlayers < 2)
-            numPlayers = 2;
-        if (numPlayers > 4)
-            numPlayers = 4;
-
-        for (int i = 0; i < numPlayers; i++) {
-            string name;
-            cout << "Nama pemain " << (i + 1) << ": ";
-            cin >> name;
-            playerNames.push_back(name);
-        }
-
-        engine.startNewGame(playerNames);
-        cout << "\n[GAME] Permainan dimulai dengan " << numPlayers << " pemain!"
-             << endl;
-
-        // Print turn order
-        cout << "[GAME] Urutan giliran: ";
-        for (Player *p : engine.getAllPlayers())
-            cout << p->getUsername() << " ";
-        cout << endl;
-    } else {
-        cout << "Masukkan nama file save: ";
-        string filename;
-        cin >> filename;
-        engine.loadGame(filename);
-        cout << "[LOAD] (TODO: Load game belum terimplementasi di GameEngine)"
-             << endl;
-        // Fallback: buat game baru
-        cout << "Fallback: memulai game baru..." << endl;
-        playerNames = {"Player1", "Player2"};
-        engine.startNewGame(playerNames);
-    }
-
-    // ===== 2. BUAT WINDOW =====
+    // Create window (starts in MAIN_MENU screen)
     GameWindow window(1280, 800, "pOOPs: NIMONSPOLI");
     window.init();
 
-    phase = Phase::AWAITING_ACTION;
-    turnJustStarted = true;
+    // ---- Register menu / lifecycle callbacks ----
 
-    // ===== 3. REGISTER CALLBACKS =====
+    window.onNewGame([&](int numPlayers, vector<string> names) {
+        (void)numPlayers;
+        engine.startNewGame(names);
+        gameStarted = true;
+        window.setScreen(AppScreen::PLAYING);
+        phase = Phase::AWAITING_ACTION;
+        turnJustStarted = true;
+        newPlayerTurnStarted = true;
+        lastD1 = 0; lastD2 = 0;
+    });
+
+    window.onLoadGame([&](string filename) {
+        // Try to load; on fail, show error in text input
+        try {
+            engine.loadGame(filename);
+            gameStarted = true;
+            window.setScreen(AppScreen::PLAYING);
+            phase = Phase::AWAITING_ACTION;
+            turnJustStarted = true;
+            newPlayerTurnStarted = true;
+            lastD1 = 0; lastD2 = 0;
+        } catch (...) {
+            window.setTextInputError("Gagal memuat file: " + filename);
+        }
+    });
+
+    window.onSaveGame([&](string filename) {
+        if (!gameStarted) return;
+        try {
+            engine.saveGame(filename);
+        } catch (exception &e) {
+            window.setTextInputError(string("Gagal simpan: ") + e.what());
+        }
+    });
+
+    window.onExitGame([&]() {
+        // handled via exitConfirmPending
+    });
+
+    // ---- Register game action callbacks ----
 
     // LEMPAR DADU
     window.onCommand("LEMPAR_DADU", [&]() {
-        if (phase != Phase::AWAITING_ACTION) {
-            cout << "[!] Tidak bisa lempar dadu sekarang." << endl;
-            return;
-        }
-        if (engine.hasDiceRolled()) {
-            cout << "[!] Dadu sudah dilempar giliran ini." << endl;
-            return;
-        }
+        if (!gameStarted || phase != Phase::AWAITING_ACTION) return;
+        if (engine.hasDiceRolled()) return;
 
-        // Generate dice in controller so we know the values
         random_device rd;
         mt19937 gen(rd());
         uniform_int_distribution<> dis(1, 6);
@@ -1178,13 +1133,9 @@ int main() {
 
         try {
             engine.rollDice(lastD1, lastD2);
-        } catch (InvalidCommandException &e) {
-            cout << "[!] " << e.what() << endl;
+        } catch (InvalidCommandException &) {
             return;
         }
-
-        cout << "\n[DADU] " << engine.getCurrentPlayer()->getUsername() << ": "
-             << lastD1 << " + " << lastD2 << " = " << (lastD1 + lastD2) << endl;
 
         logger.logEvent(engine.getCurrentRound(),
                         engine.getCurrentPlayer()->getUsername(),
@@ -1192,9 +1143,7 @@ int main() {
                         to_string(lastD1) + "+" + to_string(lastD2) + "=" +
                             to_string(lastD1 + lastD2));
 
-        // Check if player went to jail (triple double)
         if (engine.getCurrentPlayer()->getStatus() == PlayerStatus::JAILED) {
-            cout << "[PENJARA] Triple double! Masuk penjara." << endl;
             phase = Phase::POST_ROLL;
             return;
         }
@@ -1205,62 +1154,43 @@ int main() {
 
     // AKHIRI GILIRAN
     window.onCommand("AKHIRI_GILIRAN", [&]() {
-        if (phase != Phase::POST_ROLL && phase != Phase::AWAITING_ACTION) {
-            if (!engine.hasDiceRolled()) {
-                cout << "[!] Lempar dadu dulu sebelum akhiri giliran." << endl;
-            } else {
-                cout << "[!] Selesaikan aksi yang sedang berjalan." << endl;
-            }
-            return;
-        }
-        if (!engine.hasDiceRolled()) {
-            cout << "[!] Lempar dadu dulu!" << endl;
-            return;
-        }
+        if (!gameStarted) return;
+        if (phase != Phase::POST_ROLL && phase != Phase::AWAITING_ACTION) return;
+        if (!engine.hasDiceRolled()) return;
 
+        int prevIdx = engine.getCurrentTurnIdx();
         try {
             engine.endTurn();
-        } catch (InvalidCommandException &e) {
-            cout << "[!] " << e.what() << endl;
+        } catch (InvalidCommandException &) {
             return;
-        } catch (GameStateException &e) {
-            // Game over
-            cout << "[GAME] " << e.what() << endl;
-        }
+        } catch (GameStateException &) {}
 
-        lastD1 = 0;
-        lastD2 = 0;
-
-        if (checkGameOver(engine, window))
-            return;
-
+        lastD1 = 0; lastD2 = 0;
+        if (checkGameOver(engine, window)) return;
+        // Hanya draw kartu di awal giliran pemain baru (bukan bonus double)
+        newPlayerTurnStarted = (engine.getCurrentTurnIdx() != prevIdx);
         turnJustStarted = true;
         phase = Phase::AWAITING_ACTION;
-        cout << "\n--- Giliran: " << engine.getCurrentPlayer()->getUsername()
-             << " (Turn " << engine.getCurrentRound() << ") ---" << endl;
     });
 
     // GADAI
     window.onCommand("GADAI", [&]() {
-        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL)
-            return;
+        if (!gameStarted) return;
+        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL) return;
         Player *p = engine.getCurrentPlayer();
         gadaiCandidates.clear();
         vector<string> opts;
         for (PropertyTile *prop : p->getOwnedProperties()) {
-            if (prop->getStatus() == 1) { // OWNED
-                StreetTile *st = dynamic_cast<StreetTile *>(prop);
-                if (st && st->hasBuildings())
-                    continue; // Harus jual bangunan dulu
+            if (prop->getStatus() == 1) {
+                if (auto *st = dynamic_cast<StreetTile *>(prop))
+                    if (st->hasBuildings()) continue;
                 gadaiCandidates.push_back(prop);
                 opts.push_back(prop->getKode() + " - Gadai: " +
                                fmtMoney(prop->getmortgageValue()));
             }
         }
-        if (opts.empty()) {
-            cout << "[GADAI] Tidak ada properti yang bisa digadaikan." << endl;
-            return;
-        }
+        if (opts.empty()) return;
+        opts.push_back("BATAL");
         PopupState ps;
         ps.type = PopupType::LIQUIDATION;
         ps.title = "GADAI PROPERTI";
@@ -1272,23 +1202,20 @@ int main() {
 
     // TEBUS
     window.onCommand("TEBUS", [&]() {
-        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL)
-            return;
+        if (!gameStarted) return;
+        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL) return;
         Player *p = engine.getCurrentPlayer();
         gadaiCandidates.clear();
         vector<string> opts;
         for (PropertyTile *prop : p->getOwnedProperties()) {
-            if (prop->getStatus() == 2) { // MORTGAGED
+            if (prop->getStatus() == 2) {
                 gadaiCandidates.push_back(prop);
-                opts.push_back(prop->getKode() +
-                               " - Tebus: " + fmtMoney(prop->getPrice()));
+                opts.push_back(prop->getKode() + " - Tebus: " +
+                               fmtMoney(prop->getPrice()));
             }
         }
-        if (opts.empty()) {
-            cout << "[TEBUS] Tidak ada properti yang sedang digadaikan."
-                 << endl;
-            return;
-        }
+        if (opts.empty()) return;
+        opts.push_back("BATAL");
         PopupState ps;
         ps.type = PopupType::LIQUIDATION;
         ps.title = "TEBUS PROPERTI";
@@ -1300,44 +1227,29 @@ int main() {
 
     // BANGUN
     window.onCommand("BANGUN", [&]() {
-        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL)
-            return;
+        if (!gameStarted) return;
+        if (phase != Phase::AWAITING_ACTION && phase != Phase::POST_ROLL) return;
         Player *p = engine.getCurrentPlayer();
 
-        // Find monopolized color groups with buildable streets
         map<string, vector<StreetTile *>> buildable;
         for (PropertyTile *prop : p->getOwnedProperties()) {
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            if (st && st->getRentLevel() < 5) {
-                // Check if color group is fully monopolized (all owned by this
-                // player)
-                buildable[st->getColorGroup()].push_back(st);
-            }
+            if (auto *st = dynamic_cast<StreetTile *>(prop))
+                if (st->getRentLevel() < 5)
+                    buildable[st->getColorGroup()].push_back(st);
         }
 
-        // Filter: only groups that are actually monopolized
         map<string, int> totalInGroup;
         for (int i = 1; i <= board->getTotalTiles(); i++) {
-            StreetTile *st = dynamic_cast<StreetTile *>(board->getTileAt(i));
-            if (st)
+            if (auto *st = dynamic_cast<StreetTile *>(board->getTileAt(i)))
                 totalInGroup[st->getColorGroup()]++;
         }
 
         vector<string> opts;
-        vector<string> colorGroups;
         for (auto &[color, streets] : buildable) {
-            if ((int)streets.size() == totalInGroup[color]) {
-                colorGroups.push_back(color);
-                opts.push_back("[" + color + "] " + to_string(streets.size()) +
-                               " properti");
-            }
+            if ((int)streets.size() == totalInGroup[color])
+                opts.push_back("[" + color + "] " + to_string(streets.size()) + " properti");
         }
-
-        if (opts.empty()) {
-            cout << "[BANGUN] Tidak ada color group yang memenuhi syarat."
-                 << endl;
-            return;
-        }
+        if (opts.empty()) return;
 
         PopupState ps;
         ps.type = PopupType::BUY_PROPERTY;
@@ -1348,192 +1260,337 @@ int main() {
         pending = Pending::BANGUN_COLOR_SELECT;
     });
 
-    // CETAK PAPAN (terminal output)
+    // CETAK PAPAN — show board summary in GUI overlay
     window.onCommand("CETAK_PAPAN", [&]() {
-        cout << "\n=== PAPAN PERMAINAN ===" << endl;
-        board->printBoardStatus();
-    });
-
-    // CETAK AKTA (terminal output)
-    window.onCommand("CETAK_AKTA", [&]() {
-        cout << "\nMasukkan kode petak: ";
-        string kode;
-        cin >> kode;
-        Tile *tile = board->getTileByKode(kode);
-        if (!tile) {
-            cout << "Petak \"" << kode << "\" tidak ditemukan." << endl;
-            return;
-        }
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop) {
-            cout << "Petak \"" << kode << "\" bukan properti." << endl;
-            return;
-        }
-        cout << "+================================+" << endl;
-        cout << "|        AKTA KEPEMILIKAN        |" << endl;
-        StreetTile *st = dynamic_cast<StreetTile *>(prop);
-        if (st) {
-            cout << "|    [" << st->getColorGroup() << "] " << st->getName()
-                 << " (" << st->getKode() << ")" << endl;
-            cout << "+================================+" << endl;
-            cout << "| Harga Beli : " << fmtMoney(st->getPrice()) << endl;
-            cout << "| Nilai Gadai: " << fmtMoney(st->getmortgageValue())
-                 << endl;
-            cout << "| Rumah      : " << fmtMoney(st->getHouseCost()) << endl;
-            cout << "| Hotel      : " << fmtMoney(st->getHotelCost()) << endl;
-            cout << "| Level      : " << st->getRentLevel() << endl;
-        } else {
-            cout << "|    " << prop->getName() << " (" << prop->getKode() << ")"
-                 << endl;
-            cout << "+================================+" << endl;
-            cout << "| Nilai Gadai: " << fmtMoney(prop->getmortgageValue())
-                 << endl;
-        }
-        cout << "| Status     : " << propStatusStr(prop->getStatus()) << endl;
-        if (prop->getOwnerId() != -1)
-            cout << "| Pemilik    : "
-                 << findOwnerName(prop->getOwnerId(), engine.getAllPlayers())
-                 << endl;
-        cout << "+================================+" << endl;
-    });
-
-    // CETAK PROPERTI (terminal output)
-    window.onCommand("CETAK_PROPERTI", [&]() {
-        Player *p = engine.getCurrentPlayer();
-        cout << "\n=== Properti Milik: " << p->getUsername() << " ===" << endl;
-        if (p->getOwnedProperties().empty()) {
-            cout << "Kamu belum memiliki properti apapun." << endl;
-            return;
-        }
-        for (PropertyTile *prop : p->getOwnedProperties()) {
-            StreetTile *st = dynamic_cast<StreetTile *>(prop);
-            cout << "  - " << prop->getName() << " (" << prop->getKode() << ") "
-                 << propStatusStr(prop->getStatus());
-            if (st) {
-                cout << " [" << st->getColorGroup() << "] Lv"
-                     << st->getRentLevel();
+        if (!gameStarted) return;
+        vector<string> lines;
+        lines.push_back("=== STATUS PAPAN PERMAINAN ===");
+        lines.push_back("Turn: " + to_string(engine.getCurrentRound()) + " / " +
+                        to_string(ConfigLoader::getInstance()->getMaxTurn()));
+        lines.push_back("");
+        for (int i = 1; i <= board->getTotalTiles(); i++) {
+            Tile *tile = board->getTileAt(i);
+            if (!tile) continue;
+            if (auto *pt = dynamic_cast<PropertyTile *>(tile)) {
+                string ownerStr = pt->getOwnerId() == -1 ? "BANK" :
+                    findOwnerName(pt->getOwnerId(), engine.getAllPlayers());
+                lines.push_back("[" + to_string(i) + "] " + tile->getKode() +
+                                " - " + propStatusStr(pt->getStatus()) +
+                                " (" + ownerStr + ")");
             }
-            cout << endl;
         }
-        cout << "Total kekayaan: " << fmtMoney(p->getWealth()) << endl;
+        window.showPropertyInfo("PAPAN PERMAINAN", lines);
     });
 
-    // CETAK LOG (terminal output)
+    // CETAK AKTA — show popup to select property, then show deed
+    window.onCommand("CETAK_AKTA", [&]() {
+        if (!gameStarted) return;
+        aktaCandidates.clear();
+        vector<string> opts;
+        for (int i = 1; i <= board->getTotalTiles(); i++) {
+            Tile *tile = board->getTileAt(i);
+            if (auto *pt = dynamic_cast<PropertyTile *>(tile)) {
+                aktaCandidates.push_back(pt);
+                string label = pt->getKode() + " - " + pt->getName();
+                string ownerStr = pt->getOwnerId() == -1 ? "" :
+                    " [" + findOwnerName(pt->getOwnerId(), engine.getAllPlayers()) + "]";
+                opts.push_back(label + ownerStr);
+            }
+        }
+        if (opts.empty()) return;
+        PopupState ps;
+        ps.type = PopupType::LIQUIDATION;
+        ps.title = "PILIH PROPERTI - CETAK AKTA";
+        ps.message = "Pilih properti untuk melihat akta kepemilikan:";
+        ps.options = opts;
+        window.showPopup(ps);
+        pending = Pending::AKTA_SELECT;
+    });
+
+    // CETAK PROPERTI — show current player's properties in GUI overlay
+    window.onCommand("CETAK_PROPERTI", [&]() {
+        if (!gameStarted) return;
+        Player *p = engine.getCurrentPlayer();
+        vector<string> lines;
+        lines.push_back("Pemain: " + p->getUsername());
+        lines.push_back("Uang  : " + fmtMoney(p->getMoney()));
+        lines.push_back("Total Kekayaan: " + fmtMoney(p->getWealth()));
+        lines.push_back("---");
+        if (p->getOwnedProperties().empty()) {
+            lines.push_back("(Belum memiliki properti)");
+        } else {
+            for (PropertyTile *prop : p->getOwnedProperties()) {
+                string info = prop->getKode() + " - " + prop->getName() +
+                              " [" + propStatusStr(prop->getStatus()) + "]";
+                if (auto *st = dynamic_cast<StreetTile *>(prop))
+                    info += " Lv" + to_string(st->getRentLevel());
+                lines.push_back(info);
+            }
+        }
+        window.showPropertyInfo("PROPERTI: " + p->getUsername(), lines);
+    });
+
+    // KELUAR — show exit confirmation popup
+    window.onCommand("KELUAR", [&]() {
+        PopupState ps;
+        ps.type = PopupType::SAVE;
+        ps.title = "KELUAR DARI GAME";
+        ps.message = "Yakin ingin keluar?\nProgress yang belum disimpan\nakan hilang!";
+        ps.options = {"Ya, Keluar", "Batal"};
+        window.showPopup(ps);
+        pending = Pending::EXIT_CONFIRM;
+    });
+
+    // CETAK LOG — show full log in GUI overlay
     window.onCommand("CETAK_LOG", [&]() {
+        if (!gameStarted) return;
         auto logs = logger.getLogs(-1);
-        cout << "\n=== Log Transaksi ===" << endl;
-        for (auto &le : logs) {
-            cout << "[Turn " << le.turn << "] " << le.username << " | "
-                 << actionTypeToString(le.actionType) << " | " << le.detail
-                 << endl;
+        vector<string> lines;
+        lines.push_back("=== LOG TRANSAKSI (" + to_string(logs.size()) + " entri) ===");
+        int from = (int)logs.size() > 20 ? (int)logs.size() - 20 : 0;
+        for (int i = from; i < (int)logs.size(); i++) {
+            auto &le = logs[i];
+            lines.push_back("[T" + to_string(le.turn) + "] [" +
+                            actionTypeToString(le.actionType) + "] " +
+                            le.username + ": " + le.detail);
         }
+        if ((int)logs.size() > 20) lines.push_back("... (hanya 20 terakhir ditampilkan)");
+        window.showPropertyInfo("LOG TRANSAKSI", lines);
     });
 
-    // SIMPAN
+    // SIMPAN — show GUI text input dialog
     window.onCommand("SIMPAN", [&]() {
-        cout << "\nMasukkan nama file: ";
-        string filename;
-        cin >> filename;
-        engine.saveGame(filename);
-        cout << "[SAVE] (TODO: Save game di GameEngine)" << endl;
+        if (!gameStarted) return;
+        window.showTextInput("SIMPAN PERMAINAN", "Path file (contoh: saves/game1):", true);
     });
 
-    // MUAT
+    // MUAT — show GUI text input dialog
     window.onCommand("MUAT", [&]() {
-        cout << "[MUAT] Muat hanya bisa dilakukan sebelum permainan dimulai."
-             << endl;
+        window.showTextInput("MUAT PERMAINAN", "Path file (contoh: saves/game1):", false);
     });
 
-    // GUNAKAN KEMAMPUAN (kartu di tangan - index 0, 1, 2)
+    // GUNAKAN KEMAMPUAN (kartu di tangan)
     for (int ci = 0; ci < 3; ci++) {
         window.onCommand("GUNAKAN_KEMAMPUAN_" + to_string(ci), [&, ci]() {
-            if (phase != Phase::AWAITING_ACTION) {
-                cout << "[!] Kartu hanya bisa digunakan sebelum lempar dadu."
-                     << endl;
-                return;
-            }
-            if (engine.hasDiceRolled()) {
-                cout << "[!] Kartu hanya bisa digunakan SEBELUM lempar dadu."
-                     << endl;
-                return;
-            }
+            if (!gameStarted || phase != Phase::AWAITING_ACTION) return;
+            if (engine.hasDiceRolled()) return;
             Player *p = engine.getCurrentPlayer();
-            if (p->getHasUsedCardThisTurn()) {
-                cout << "[!] Sudah menggunakan kartu giliran ini." << endl;
-                return;
-            }
+            if (p->getHasUsedCardThisTurn()) return;
             auto &cards = p->getHandCards();
-            if (ci >= (int)cards.size())
-                return;
-
+            if (ci >= (int)cards.size()) return;
             SkillCard *card = cards[ci];
-            cout << "[KARTU] Menggunakan " << card->getCardName() << "!"
-                 << endl;
-            card->use(*p, engine);
-            p->setHasUsedCardThisTurn(true);
-            p->removeCard(ci);
-            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                            LogActionType::CARD, card->getCardName());
+            SkillCardEffect eff = card->use(*p, engine);
+
+            auto removeUsedCard = [&](int idx) {
+                p->setHasUsedCardThisTurn(true);
+                p->removeCard(idx);
+            };
+
+            switch (eff) {
+            case SkillCardEffect::MOVE: {
+                MoveCard *mc = dynamic_cast<MoveCard *>(card);
+                int steps = mc ? mc->getSteps() : 1;
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "MoveCard maju " + to_string(steps) + " petak");
+                removeUsedCard(ci);
+                p->move(steps);
+                engine.markDiceRolled(); // kartu ini menggantikan lemparan dadu
+                phase = Phase::ROLLED;
+                processTileEffect(engine, window, logger);
+                break;
+            }
+            case SkillCardEffect::DISCOUNT: {
+                DiscountCard *dc = dynamic_cast<DiscountCard *>(card);
+                int pct = dc ? dc->getDiscountPercent() : 10;
+                p->setActiveDiscountPercent(pct);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "DiscountCard diskon " + to_string(pct) + "%");
+                removeUsedCard(ci);
+                break;
+            }
+            case SkillCardEffect::SHIELD: {
+                p->setShieldActive(true);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "ShieldCard: imun tagihan giliran ini");
+                removeUsedCard(ci);
+                break;
+            }
+            case SkillCardEffect::TELEPORT: {
+                // Popup untuk pilih tujuan (semua petak 1–40)
+                pendingSkillCard = card;
+                vector<string> opts;
+                for (int i = 1; i <= board->getTotalTiles(); i++) {
+                    Tile *t = board->getTileAt(i);
+                    opts.push_back("[" + to_string(i) + "] " + t->getName());
+                }
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "TELEPORT - Pilih Tujuan";
+                ps.message = "Pilih petak tujuan:";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::TELEPORT_SELECT;
+                break;
+            }
+            case SkillCardEffect::LASSO: {
+                // Popup pilih pemain lawan
+                lassoTargets.clear();
+                vector<string> opts;
+                for (Player *pl : engine.getAllPlayers()) {
+                    if (pl != p && pl->getStatus() != PlayerStatus::BANKRUPT) {
+                        lassoTargets.push_back(pl);
+                        opts.push_back(pl->getUsername() + " (petak " +
+                                       to_string(pl->getPosition() + 1) + ")");
+                    }
+                }
+                if (lassoTargets.empty()) break;
+                pendingSkillCard = card;
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "LASSO - Pilih Target";
+                ps.message = "Tarik pemain lawan ke petakmu saat ini\n(posisi " +
+                             to_string(p->getPosition() + 1) + "):";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::LASSO_SELECT;
+                break;
+            }
+            case SkillCardEffect::DEMOLITION: {
+                // Popup pilih properti lawan yang punya bangunan
+                demolitionCandidates.clear();
+                vector<string> opts;
+                for (Player *pl : engine.getAllPlayers()) {
+                    if (pl == p || pl->getStatus() == PlayerStatus::BANKRUPT) continue;
+                    for (PropertyTile *prop : pl->getOwnedProperties()) {
+                        if (auto *st = dynamic_cast<StreetTile *>(prop)) {
+                            if (st->getRentLevel() > 0) {
+                                demolitionCandidates.push_back(st);
+                                string lvl = st->getRentLevel() == 5 ? "Hotel" :
+                                    to_string(st->getRentLevel()) + " Rumah";
+                                opts.push_back(st->getKode() + " [" + pl->getUsername() +
+                                               "] " + lvl);
+                            }
+                        }
+                    }
+                }
+                if (demolitionCandidates.empty()) break;
+                pendingSkillCard = card;
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "DEMOLITION - Pilih Properti";
+                ps.message = "Pilih properti lawan untuk dihancurkan 1 bangunan:";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::DEMOLITION_SELECT;
+                break;
+            }
+            default:
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, card->getCardName());
+                removeUsedCard(ci);
+                break;
+            }
         });
     }
 
     // POPUP RESPONSE
-    window.onPopupOption(
-        [&](int idx) { handlePopupResponse(idx, engine, window, logger); });
+    window.onPopupOption([&](int idx) {
+        // Handle exit confirmation (popup of type SAVE with title "KELUAR DARI GAME")
+        if (pending == Pending::NONE && idx == 0) {
+            // Could be exit confirm or winner OK — check popup state
+        }
+        handlePopupResponse(idx, engine, window, logger);
+    });
 
-    // MAIN
-    cout << "\n--- Giliran: " << engine.getCurrentPlayer()->getUsername()
-         << " (Turn " << engine.getCurrentRound() << ") ---" << endl;
+    // ============================================================
+    // MAIN LOOP
+    // ============================================================
 
     while (window.isRunning()) {
-        // Handle turn start logic
-        if (turnJustStarted && phase == Phase::AWAITING_ACTION) {
-            turnJustStarted = false;
-            Player *p = engine.getCurrentPlayer();
-
-            if (p->getStatus() == PlayerStatus::BANKRUPT) {
-                // Skip bankrupt player
-                try {
-                    engine.endTurn();
-                } catch (...) {
-                }
-                if (checkGameOver(engine, window))
-                    continue;
-                turnJustStarted = true;
-                continue;
-            }
-
-            // Reset discount from previous turn
-            p->setActiveDiscountPercent(0);
-
-            // TODO: Draw skill card (koordinasi Orang 4 - Miguel)
-            // Sementara skip card draw
-
-            // Check if jailed → show jail popup
-            if (p->getStatus() == PlayerStatus::JAILED) {
-                int fine =
-                    50 /* TODO: needs ConfigLoader::getJailFine() getter */;
-                PopupState ps;
-                ps.type = PopupType::JAIL;
-                ps.title = "PENJARA";
-                ps.message = p->getUsername() + " sedang di penjara.\n" +
-                             "Sisa giliran percobaan: " +
-                             to_string(p->getJailTurnsLeft()) + "\n" +
-                             "Bayar denda " + fmtMoney(fine) +
-                             " atau coba lempar double?";
-                ps.options = {"Bayar Denda " + fmtMoney(fine), "Lempar Dadu"};
-                window.showPopup(ps);
-                pending = Pending::JAIL_CHOICE;
-                phase = Phase::EFFECT_PENDING;
-            }
+        // Handle exit confirmation flag set in handlePopupResponse
+        if (exitConfirmPending) {
+            // Force window close by breaking the loop
+            break;
         }
 
-        // Update GUI state
-        GameState gs = buildGameState(engine, logger);
-        window.updateState(gs);
+        if (window.getScreen() == AppScreen::PLAYING && gameStarted) {
+            // Turn start logic
+            if (turnJustStarted && phase == Phase::AWAITING_ACTION) {
+                turnJustStarted = false;
+                Player *p = engine.getCurrentPlayer();
+
+                if (p->getStatus() == PlayerStatus::BANKRUPT) {
+                    try { engine.endTurn(); } catch (...) {}
+                    if (checkGameOver(engine, window)) {
+                        GameState gs = buildGameState(engine, logger);
+                        window.updateState(gs);
+                        window.tick();
+                        continue;
+                    }
+                    newPlayerTurnStarted = true;
+                    turnJustStarted = true;
+                    continue;
+                }
+
+                // Reset discount
+                p->setActiveDiscountPercent(0);
+
+                // Draw 1 kartu di awal giliran pemain baru (spec: "awal giliran, semua pemain mendapat 1 kartu acak")
+                bool droppingCard = false;
+                if (newPlayerTurnStarted) {
+                    newPlayerTurnStarted = false;
+                    SkillCard *newCard = engine.drawSkillCard();
+                    if (newCard) {
+                        if ((int)p->getHandCards().size() < 3) {
+                            p->addCard(newCard);
+                            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                            LogActionType::CARD,
+                                            "Dapat kartu awal giliran: " + newCard->getCardName());
+                        } else {
+                            // Tangan penuh — paksa buang 1 kartu
+                            pendingNewCard = newCard;
+                            vector<string> opts;
+                            for (const SkillCard *c : p->getHandCards())
+                                opts.push_back(c->getCardName() + ": " + c->getCardDescription());
+                            PopupState ps;
+                            ps.type = PopupType::BUY_PROPERTY;
+                            ps.title = "BUANG KARTU";
+                            ps.message = "Tangan penuh! Pilih kartu untuk dibuang.\n"
+                                         "Kartu baru: " + newCard->getCardName() +
+                                         "\n" + newCard->getCardDescription();
+                            ps.options = opts;
+                            window.showPopup(ps);
+                            pending = Pending::DROP_CARD;
+                            phase = Phase::EFFECT_PENDING;
+                            droppingCard = true;
+                        }
+                    }
+                }
+
+                // Jail popup — ditunda jika sedang DROP_CARD
+                if (!droppingCard && p->getStatus() == PlayerStatus::JAILED) {
+                    int fine = 50;
+                    PopupState ps;
+                    ps.type = PopupType::JAIL;
+                    ps.title = "PENJARA";
+                    ps.message = p->getUsername() + " sedang di penjara.\n" +
+                                 "Sisa giliran percobaan: " +
+                                 to_string(p->getJailTurnsLeft()) + "\n" +
+                                 "Bayar denda " + fmtMoney(fine) +
+                                 " atau coba lempar double?";
+                    ps.options = {"Bayar Denda " + fmtMoney(fine), "Lempar Dadu"};
+                    window.showPopup(ps);
+                    pending = Pending::JAIL_CHOICE;
+                    phase = Phase::EFFECT_PENDING;
+                }
+            }
+
+            GameState gs = buildGameState(engine, logger);
+            window.updateState(gs);
+        }
+
         window.tick();
     }
 
-    cout << "\nTerima kasih telah bermain pOOPs: NIMONSPOLI!" << endl;
     return 0;
 }

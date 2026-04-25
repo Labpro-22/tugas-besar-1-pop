@@ -34,6 +34,7 @@ void PropertyTile::unmortgage() {
 }
 
 void PropertyTile::sellTobank(Player &owner) {
+    (void)owner;
     ownerId = -1;
     status = 0;
 }
@@ -54,6 +55,7 @@ StreetTile::StreetTile(int index, const std::string &code,
       hotelCost(hotelCost), rentLevel(0) {}
 
 int StreetTile::calcRent(int diceRoll) const {
+    (void)diceRoll;
     int cur = 0;
     if (rentLevel == 0) {
         if (isMonopolized) {
@@ -89,7 +91,7 @@ EffectType StreetTile::onLanded(Player &player) {
 }
 
 void StreetTile::sellTobank(Player &owner) {
-    // ini kayaknya redundan sama mortgage dari PropertyTile
+    (void)owner; // ini kayaknya redundan sama mortgage dari PropertyTile
 }
 
 void StreetTile::buildHouse() {
@@ -126,6 +128,12 @@ void StreetTile::demolish() {
     hasBuilding = false;
 }
 
+void StreetTile::removeOneBuilding() {
+    if (rentLevel <= 0) return;
+    rentLevel--;
+    if (rentLevel == 0) hasBuilding = false;
+}
+
 bool StreetTile::hasBuildings() const { return this->hasBuilding; }
 
 int StreetTile::getHouseCost() const { return this->houseCost; }
@@ -145,7 +153,6 @@ int StreetTile::calcBuildingResaleValue() const {
 int StreetTile::calcValue() const {
     if (!hasBuilding)
         return 0;
-    int total = 0;
     if (rentLevel == 5)
         return (4 * houseCost) + hotelCost;
     else
@@ -171,6 +178,7 @@ RailroadTile::RailroadTile(int index, const std::string &code,
       rentByCount(rentByCount) {}
 
 int RailroadTile::calcRent(int diceRoll) const {
+    (void)diceRoll;
     auto it = rentByCount.find(railroadOwnedCount);
     if (it != rentByCount.end()) {
         return it->second;

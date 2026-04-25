@@ -224,15 +224,13 @@ void Formatter::printBoard(Board &board, const std::vector<Player> &players,
 
     std::cout << "|";
     for (int idx : topRow) {
-        auto [l1, l2] = cell(idx);
-        std::cout << l1 << "|";
+        std::cout << cell(idx).first << "|";
     }
     std::cout << "\n";
 
     std::cout << "|";
     for (int idx : topRow) {
-        auto [l1, l2] = cell(idx);
-        std::cout << l2 << "|";
+        std::cout << cell(idx).second << "|";
     }
     std::cout << "\n";
 
@@ -240,10 +238,6 @@ void Formatter::printBoard(Board &board, const std::vector<Player> &players,
 
     std::vector<std::string> centerLines;
     {
-
-        int panelW = 9 * (W + 1) - 1;
-        std::string border(panelW, ' ');
-
         std::string title = "================================== ";
         centerLines.push_back("  " + title);
 
@@ -270,8 +264,7 @@ void Formatter::printBoard(Board &board, const std::vector<Player> &players,
 
     for (int row = 0; row < 9; row++) {
 
-        auto [l1, l2] = cell(leftCol[row]);
-        std::cout << "|" << l1 << "|";
+        std::cout << "|" << cell(leftCol[row]).first << "|";
 
         std::string midLine = centerLines[row];
 
@@ -282,17 +275,14 @@ void Formatter::printBoard(Board &board, const std::vector<Player> &players,
             midLine = midLine.substr(0, panelW);
         std::cout << midLine << "|";
 
-        auto [r1, r2] = cell(rightCol[row]);
-        std::cout << r1 << "|\n";
+        std::cout << cell(rightCol[row]).first << "|\n";
 
-        auto [ll1, ll2] = cell(leftCol[row]);
-        std::cout << "|" << ll2 << "|";
+        std::cout << "|" << cell(leftCol[row]).second << "|";
         std::string midLine2 = "";
         if ((int)midLine2.size() < panelW)
             midLine2 += std::string(panelW - midLine2.size(), ' ');
         std::cout << midLine2 << "|";
-        auto [rr1, rr2] = cell(rightCol[row]);
-        std::cout << rr2 << "|\n";
+        std::cout << cell(rightCol[row]).second << "|\n";
 
         std::cout << "+----------+" << std::string(panelW, ' ')
                   << "+----------+\n";
@@ -302,15 +292,13 @@ void Formatter::printBoard(Board &board, const std::vector<Player> &players,
 
     std::cout << "|";
     for (int idx : bottomRow) {
-        auto [l1, l2] = cell(idx);
-        std::cout << l1 << "|";
+        std::cout << cell(idx).first << "|";
     }
     std::cout << "\n";
 
     std::cout << "|";
     for (int idx : bottomRow) {
-        auto [l1, l2] = cell(idx);
-        std::cout << l2 << "|";
+        std::cout << cell(idx).second << "|";
     }
     std::cout << "\n";
 
@@ -601,7 +589,6 @@ void Formatter::printAuction(const PropertyTile &property,
 
 void Formatter::printFestival(const PropertyTile &property, int oldRent,
                               int newRent, int duration) {
-    const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
     std::cout << Color::YELLOW << "Efek festival aktif!" << Color::RESET << "\n"
               << "Properti  : " << property.getName() << " ("
               << property.getKode() << ")\n"

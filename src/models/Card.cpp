@@ -19,6 +19,8 @@ SkillCard::SkillCard(const std::string &name, const std::string &description,
 SkillCard::~SkillCard() {}
 
 SkillCardEffect SkillCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::NONE;
 }
 
@@ -43,6 +45,8 @@ MoveCard::MoveCard(int savedSteps)
 int MoveCard::getSteps() const { return steps; }
 
 SkillCardEffect MoveCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::MOVE;
 }
 
@@ -70,6 +74,8 @@ void DiscountCard::decrementTurns() {
 }
 
 SkillCardEffect DiscountCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::DISCOUNT;
 }
 
@@ -83,6 +89,8 @@ ShieldCard::ShieldCard()
                 SkillCardType::SHIELD) {}
 
 SkillCardEffect ShieldCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::SHIELD;
 }
 
@@ -93,6 +101,8 @@ TeleportCard::TeleportCard()
                 SkillCardType::TELEPORT) {}
 
 SkillCardEffect TeleportCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::TELEPORT;
 }
 
@@ -105,6 +115,8 @@ LassoCard::LassoCard()
           SkillCardType::LASSO) {}
 
 SkillCardEffect LassoCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::LASSO;
 }
 
@@ -116,6 +128,8 @@ DemolitionCard::DemolitionCard()
                 SkillCardType::DEMOLITION) {}
 
 SkillCardEffect DemolitionCard::use(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return SkillCardEffect::DEMOLITION;
 }
 
@@ -127,6 +141,8 @@ ActionCard::ActionCard(const std::string &name, const std::string &description)
 ActionCard::~ActionCard() {}
 
 ActionCardEffect ActionCard::execute(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     return ActionCardEffect::NONE;
 }
 
@@ -147,6 +163,8 @@ ChanceCard::ChanceCard(ChanceCardType cardType)
 ChanceCardType ChanceCard::getType() const { return type; }
 
 ActionCardEffect ChanceCard::execute(Player &player, GameEngine &engine) {
+    (void)player;
+    (void)engine;
     switch (type) {
     case ChanceCardType::NEAREST_STATION:
         return ActionCardEffect::CHANCE_NEAREST_STATION;
@@ -175,6 +193,8 @@ CommunityChestCardType CommunityChestCard::getType() const { return type; }
 
 ActionCardEffect CommunityChestCard::execute(Player &player,
                                              GameEngine &engine) {
+    (void)player;
+    (void)engine;
     switch (type) {
     case CommunityChestCardType::BIRTHDAY:
         return ActionCardEffect::COMMUNITY_BIRTHDAY;

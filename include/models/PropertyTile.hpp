@@ -51,6 +51,7 @@ class StreetTile : public PropertyTile {
     void buildHouse();
     void buildHotel();
     void demolish() override;
+    void removeOneBuilding(); // Kurangi 1 level bangunan (untuk DemolitionCard)
     bool hasBuildings() const;
     int getHouseCost() const;
     int getHotelCost() const;

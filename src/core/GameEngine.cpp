@@ -24,7 +24,8 @@ using namespace std;
 GameEngine::GameEngine(Board *b, TransactionLogger *l)
     : board(b), saveLoadManager(nullptr), logger(l), skillDeck(nullptr),
       chanceDeck(nullptr), communityDeck(nullptr), currentTurnIdx(0),
-      roundCount(0), diceRolled(false), turnEnded(false) {}
+      roundCount(0), diceRolled(false), turnEnded(false),
+      lastRollWasDouble(false) {}
 
 // Destruktor bertanggung jawab menghapus semua pointer Player yang di-alokasi
 GameEngine::~GameEngine() {
@@ -80,6 +81,13 @@ void GameEngine::startNewGame(const std::vector<std::string> &playerNames) {
     currentTurnIdx = 0;
     diceRolled = false;
     turnEnded = false;
+    lastRollWasDouble = false;
+
+    // 2. (Re)inisialisasi deck kartu
+    delete skillDeck;    skillDeck    = nullptr;
+    delete chanceDeck;   chanceDeck   = nullptr;
+    delete communityDeck; communityDeck = nullptr;
+    initDecks();
 
     int initialMoney = ConfigLoader::getInstance()->getInitialMoney();
 
@@ -90,6 +98,11 @@ void GameEngine::startNewGame(const std::vector<std::string> &playerNames) {
     random_device rd;
     mt19937 g(rd());
     shuffle(players.begin(), players.end(), g);
+
+    for (int i = 0; i < (int)players.size(); i++)
+        players[i]->setId(i);
+
+    // Kartu dibagikan di awal giliran masing-masing pemain (lihat main.cpp)
 
     if (logger)
         logger->logEvent(0, "SYSTEM", LogActionType::LOAD, "Game Started");
@@ -335,14 +348,50 @@ void GameEngine::loadGame(const std::string &filePath) {
     roundCount = savedRound;
     diceRolled = false;
     turnEnded = false;
+    lastRollWasDouble = false;
 
     if (logger)
         logger->logEvent(roundCount, "SYSTEM", LogActionType::LOAD, filePath);
 }
 
 const std::vector<SkillCard *> &GameEngine::getSkillDeckCards() const {
+    if (skillDeck)
+        return skillDeck->getDeck();
     static std::vector<SkillCard *> empty;
     return empty;
+}
+
+SkillCard *GameEngine::drawSkillCard() {
+    if (!skillDeck) return nullptr;
+    if (skillDeck->isEmpty()) skillDeck->reshuffleDiscard();
+    if (skillDeck->isEmpty()) return nullptr;
+    return skillDeck->draw();
+}
+
+void GameEngine::discardSkillCard(SkillCard *card) {
+    if (skillDeck && card) skillDeck->discard(card);
+}
+
+ActionCard *GameEngine::drawChanceCard() {
+    if (!chanceDeck) return nullptr;
+    if (chanceDeck->isEmpty()) chanceDeck->reshuffleDiscard();
+    if (chanceDeck->isEmpty()) return nullptr;
+    return chanceDeck->draw();
+}
+
+void GameEngine::discardChanceCard(ActionCard *card) {
+    if (chanceDeck && card) chanceDeck->discard(card);
+}
+
+ActionCard *GameEngine::drawCommunityCard() {
+    if (!communityDeck) return nullptr;
+    if (communityDeck->isEmpty()) communityDeck->reshuffleDiscard();
+    if (communityDeck->isEmpty()) return nullptr;
+    return communityDeck->draw();
+}
+
+void GameEngine::discardCommunityCard(ActionCard *card) {
+    if (communityDeck && card) communityDeck->discard(card);
 }
 
 void GameEngine::rollDice(int d1, int d2) {
@@ -421,17 +470,13 @@ void GameEngine::rollDice(int d1, int d2) {
         // Aturan standar: 3 kali double berturut-turut -> penjara
         if (activePlayer->getDoubleStreak() >= 3) {
             activePlayer->goToJail();
-            diceRolled = true; // Giliran tetap dianggap selesai agar pemain bisa endTurn
+            diceRolled = true;       // Giliran selesai, bisa endTurn
+            lastRollWasDouble = false; // Jangan beri bonus turn setelah masuk penjara
+        } else {
+            lastRollWasDouble = true; // Double biasa, beri giliran bonus
         }
     } else {
-        // Jika tidak double, kita perlu memastikan bahwa double streak
-        // diabaikan saat endTurn. Kita bisa asumsikan Player::resetTurnFlags()
-        // akan dihandle di endTurn, tapi untuk flag kita simpan informasi bahwa
-        // roll terakhir bukan double. Karena kita tidak memodifikasi
-        // GameEngine.hpp, kita asumsikan getDoubleStreak menandakan jumlah
-        // kesempatan roll, bukan hasil roll. Idealnya jika roll bukan double,
-        // streak seharusnya 0. Kita biarkan sesuai implementasi Player (jika
-        // tidak ada resetter spesifik, endTurn akan memanggil resetTurnFlags).
+        lastRollWasDouble = false; // Non-double: giliran berakhir normal
     }
 }
 
@@ -1052,16 +1097,19 @@ void GameEngine::endTurn() {
 
     Player *activePlayer = players[currentTurnIdx];
 
-    if (activePlayer->getDoubleStreak() > 0 &&
+    if (lastRollWasDouble &&
         activePlayer->getStatus() != PlayerStatus::JAILED) {
+        // Roll double → dapat giliran bonus, belum pindah ke pemain berikutnya
         diceRolled = false;
+        lastRollWasDouble = false;
         turnEnded = false;
 
         if (logger)
             logger->logEvent(roundCount, activePlayer->getUsername(),
                              LogActionType::DOUBLE_ROLL,
-                             "Player mendapatkan giliran tambahan!");
+                             "Giliran bonus karena double!");
     } else {
+        lastRollWasDouble = false;
         turnEnded = true;
         activePlayer->resetTurnFlags();
         nextTurn();

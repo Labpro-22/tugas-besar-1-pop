@@ -1054,10 +1054,12 @@ void GameWindow::drawPlayerList() {
         drawPixelText("@" + std::to_string(p.position), sx + sw - 42, ry + 13,
                       8, C_TEXT_DIM);
         if (p.status == "JAILED") {
-            int bx = sx + 180, by = ry + 9;
-            DrawRectangle(bx, by, 44, 18, C_DANGER);
-            DrawRectangleLines(bx, by, 44, 18, C_BORDER);
-            drawPixelText("JAIL", bx + 6, by + 5, 8, WHITE);
+            int bx = sx + 170, by = ry + 9;
+            std::string jlbl = "JAIL(" + std::to_string(p.jailTurnsLeft) + ")";
+            int jlw = MeasureText(jlbl.c_str(), 7) + 10;
+            DrawRectangle(bx, by, jlw, 18, C_DANGER);
+            DrawRectangleLines(bx, by, jlw, 18, C_BORDER);
+            drawPixelText(jlbl, bx + 5, by + 5, 7, WHITE);
         } else if (p.status == "BANKRUPT") {
             int bx = sx + 150, by = ry + 9;
             DrawRectangle(bx, by, 74, 18, {90, 90, 90, 255});
@@ -1135,7 +1137,8 @@ void GameWindow::drawLog() {
         }
         drawPixelText("T" + std::to_string(log.turn), sx + 20, ry + 7, 9,
                       lat ? C_ACCENT : C_TEXT_DIM);
-        drawPixelText(truncate(log.username + " " + log.detail, 30), sx + 50,
+        std::string logLine = "[" + log.actionType + "] " + log.username + ": " + log.detail;
+        drawPixelText(truncate(logLine, 34), sx + 50,
                       ry + 7, 8, lat ? C_TEXT : C_TEXT_DIM);
     }
 }

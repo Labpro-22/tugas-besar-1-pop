@@ -43,9 +43,12 @@ enum class Pending {
     BANGUN_TILE_SELECT,
     SAVE_CONFIRM,
     EXIT_CONFIRM,
-    AKTA_SELECT,      // Pilih properti untuk cetak akta
-    PAPAN_INFO,       // Info papan permainan
-    PROPERTI_INFO,    // Info properti pemain
+    AKTA_SELECT,         // Pilih properti untuk cetak akta
+    PAPAN_INFO,          // Info papan permainan
+    PROPERTI_INFO,       // Info properti pemain
+    TELEPORT_SELECT,     // Pilih tujuan TeleportCard
+    LASSO_SELECT,        // Pilih target LassoCard
+    DEMOLITION_SELECT,   // Pilih properti untuk DemolitionCard
 };
 
 // Global state
@@ -80,6 +83,13 @@ static vector<PropertyTile *> gadaiCandidates;
 
 // Akta select candidates (all board properties)
 static vector<PropertyTile *> aktaCandidates;
+
+// SkillCard interactive state
+static SkillCard *pendingSkillCard = nullptr;
+static SkillCard *pendingNewCard = nullptr;   // kartu yang belum bisa masuk (tangan penuh)
+static bool newPlayerTurnStarted = false;     // true hanya saat giliran pemain baru (bukan bonus double)
+static vector<Player *> lassoTargets;
+static vector<StreetTile *> demolitionCandidates;
 
 // ---- Formatters ----
 
@@ -500,43 +510,50 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         break;
     }
     case EffectType::DRAW_CHANCE: {
-        random_device rd;
-        mt19937 gen(rd());
-        uniform_int_distribution<> dis(0, 2);
-        int card = dis(gen);
-        if (card == 0) {
+        ActionCard *drawn = engine.drawChanceCard();
+        if (!drawn) { phase = Phase::POST_ROLL; break; }
+        string cardName = drawn->getCardName();
+        ActionCardEffect eff = drawn->execute(*p, engine);
+        engine.discardChanceCard(drawn);
+
+        if (eff == ActionCardEffect::CHANCE_NEAREST_STATION) {
             int pos = p->getPosition();
             int stations[] = {5, 15, 25, 35};
             int nearest = stations[0];
             for (int s : stations)
                 if (s > pos) { nearest = s; break; }
             p->move((nearest - pos + 40) % 40);
-        } else if (card == 1) {
-            p->move(37);
-        } else {
+        } else if (eff == ActionCardEffect::CHANCE_MOVE_BACK_3) {
+            p->move(37); // 37 ≡ -3 mod 40
+        } else if (eff == ActionCardEffect::CHANCE_GO_TO_JAIL) {
             p->goToJail();
         }
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::CARD, "Kartu Kesempatan");
+                        LogActionType::CARD, "Kesempatan: " + cardName);
         phase = Phase::POST_ROLL;
         break;
     }
     case EffectType::DRAW_COMMUNITY: {
-        random_device rd;
-        mt19937 gen(rd());
-        uniform_int_distribution<> dis(0, 2);
-        int card = dis(gen);
+        ActionCard *drawn = engine.drawCommunityCard();
+        if (!drawn) { phase = Phase::POST_ROLL; break; }
+        string cardName = drawn->getCardName();
+        ActionCardEffect eff = drawn->execute(*p, engine);
+        engine.discardCommunityCard(drawn);
+
         auto allPlayers = engine.getAllPlayers();
-        if (card == 0) {
+        if (eff == ActionCardEffect::COMMUNITY_BIRTHDAY) {
+            // Ulang tahun: terima M100 dari tiap pemain lain
             for (Player *other : allPlayers) {
                 if (other != p && other->getStatus() != PlayerStatus::BANKRUPT) {
                     try { *other -= 100; *p += 100; } catch (...) {}
                 }
             }
-        } else if (card == 1) {
+        } else if (eff == ActionCardEffect::COMMUNITY_DOCTOR) {
+            // Dokter: bayar M700
             try { *p -= 700; }
             catch (NotEnoughMoneyException &) { p->declareBankruptcy(); }
-        } else {
+        } else if (eff == ActionCardEffect::COMMUNITY_ELECTION) {
+            // Pemilu: bayar M200 ke tiap pemain lain
             for (Player *other : allPlayers) {
                 if (other != p && other->getStatus() != PlayerStatus::BANKRUPT) {
                     try { *p -= 200; *other += 200; }
@@ -547,7 +564,7 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
             }
         }
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::CARD, "Kartu Dana Umum");
+                        LogActionType::CARD, "Dana Umum: " + cardName);
         phase = Phase::POST_ROLL;
         break;
     }
@@ -572,7 +589,7 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
     case EffectType::SEND_TO_JAIL: {
         p->goToJail();
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::UNKNOWN, "Mendarat di Pergi ke Penjara");
+                        LogActionType::UNKNOWN, "Masuk penjara (Pergi ke Penjara)");
         phase = Phase::POST_ROLL;
         break;
     }
@@ -580,7 +597,19 @@ static void processTileEffect(GameEngine &engine, GameWindow &window,
         int salary = 200;
         *p += salary;
         logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                        LogActionType::UNKNOWN, "Mendarat di GO");
+                        LogActionType::GO, "Mendarat di GO, terima M200");
+        // Dapat kartu skill saat melewati/mendarat di GO
+        SkillCard *drawn = engine.drawSkillCard();
+        if (drawn) {
+            try {
+                p->addCard(drawn);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "Dapat kartu: " + drawn->getCardName());
+            } catch (...) {
+                // Tangan penuh (3 kartu), kembalikan ke deck
+                engine.discardSkillCard(drawn);
+            }
+        }
         phase = Phase::POST_ROLL;
         break;
     }
@@ -711,14 +740,36 @@ static void handlePopupResponse(int choice, GameEngine &engine,
                 p->setStatus(PlayerStatus::ACTIVE);
                 p->setJailTurnsLeft(0);
                 logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                                LogActionType::UNKNOWN, fmtMoney(fine));
+                                LogActionType::UNKNOWN, "Bayar denda penjara " + fmtMoney(fine));
                 phase = Phase::AWAITING_ACTION;
             } catch (NotEnoughMoneyException &) {
                 p->declareBankruptcy();
                 phase = Phase::POST_ROLL;
             }
         } else {
-            phase = Phase::AWAITING_ACTION;
+            // Pilihan "Lempar Dadu" — langsung lempar tanpa klik lagi
+            random_device rd2;
+            mt19937 gen2(rd2());
+            uniform_int_distribution<> dis2(1, 6);
+            lastD1 = dis2(gen2);
+            lastD2 = dis2(gen2);
+            try {
+                engine.rollDice(lastD1, lastD2);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::ROLL,
+                                to_string(lastD1) + "+" + to_string(lastD2) +
+                                    "=" + to_string(lastD1 + lastD2));
+                if (engine.getCurrentPlayer()->getStatus() == PlayerStatus::JAILED) {
+                    // Tidak dapat double, tetap di penjara
+                    phase = Phase::POST_ROLL;
+                } else {
+                    // Double! Bebas dari penjara, proses petak
+                    phase = Phase::ROLLED;
+                    processTileEffect(engine, window, logger);
+                }
+            } catch (...) {
+                phase = Phase::AWAITING_ACTION;
+            }
         }
         pending = Pending::NONE;
         break;
@@ -822,6 +873,35 @@ static void handlePopupResponse(int choice, GameEngine &engine,
         window.closePopup();
         if (choice >= 0 && choice < (int)p->getHandCards().size())
             p->removeCard(choice);
+        // Jika drop dipicu oleh kartu awal giliran, masukkan kartu baru
+        if (pendingNewCard) {
+            try {
+                p->addCard(pendingNewCard);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD,
+                                "Dapat kartu awal giliran: " + pendingNewCard->getCardName());
+            } catch (...) {
+                engine.discardSkillCard(pendingNewCard);
+            }
+            pendingNewCard = nullptr;
+            // Cek jail popup yang tadi ditunda
+            if (p->getStatus() == PlayerStatus::JAILED) {
+                int fine = 50;
+                PopupState ps;
+                ps.type = PopupType::JAIL;
+                ps.title = "PENJARA";
+                ps.message = p->getUsername() + " sedang di penjara.\n" +
+                             "Sisa giliran percobaan: " +
+                             to_string(p->getJailTurnsLeft()) + "\n" +
+                             "Bayar denda " + fmtMoney(fine) +
+                             " atau coba lempar double?";
+                ps.options = {"Bayar Denda " + fmtMoney(fine), "Lempar Dadu"};
+                window.showPopup(ps);
+                pending = Pending::JAIL_CHOICE;
+                phase = Phase::EFFECT_PENDING;
+                return;
+            }
+        }
         pending = Pending::NONE;
         break;
     }
@@ -853,6 +933,67 @@ static void handlePopupResponse(int choice, GameEngine &engine,
             }
             window.showPropertyInfo("AKTA: " + prop->getKode(), lines);
         }
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::TELEPORT_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < engine.getBoard()->getTotalTiles() && pendingSkillCard) {
+            // choice 0 = tile 1 = position 0
+            p->setPosition(choice);
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "TeleportCard → petak " + to_string(choice + 1));
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+            engine.markDiceRolled(); // kartu ini menggantikan lemparan dadu
+            phase = Phase::ROLLED;
+            processTileEffect(engine, window, logger);
+        }
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::LASSO_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < (int)lassoTargets.size() && pendingSkillCard) {
+            Player *target = lassoTargets[choice];
+            int myPos = p->getPosition();
+            target->setPosition(myPos);
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "LassoCard: " + target->getUsername() +
+                                " ditarik ke petak " + to_string(myPos + 1));
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+        }
+        lassoTargets.clear();
+        pending = Pending::NONE;
+        break;
+    }
+    case Pending::DEMOLITION_SELECT: {
+        window.closePopup();
+        if (choice >= 0 && choice < (int)demolitionCandidates.size() && pendingSkillCard) {
+            StreetTile *st = demolitionCandidates[choice];
+            st->removeOneBuilding();
+            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                            LogActionType::CARD,
+                            "DemolitionCard: bangunan di " + st->getKode() + " dihancurkan");
+            auto &cards = p->getHandCards();
+            for (int i = 0; i < (int)cards.size(); i++) {
+                if (cards[i] == pendingSkillCard) { p->removeCard(i); break; }
+            }
+            p->setHasUsedCardThisTurn(true);
+            pendingSkillCard = nullptr;
+        }
+        demolitionCandidates.clear();
         pending = Pending::NONE;
         break;
     }
@@ -945,6 +1086,7 @@ int main() {
         window.setScreen(AppScreen::PLAYING);
         phase = Phase::AWAITING_ACTION;
         turnJustStarted = true;
+        newPlayerTurnStarted = true;
         lastD1 = 0; lastD2 = 0;
     });
 
@@ -956,6 +1098,7 @@ int main() {
             window.setScreen(AppScreen::PLAYING);
             phase = Phase::AWAITING_ACTION;
             turnJustStarted = true;
+            newPlayerTurnStarted = true;
             lastD1 = 0; lastD2 = 0;
         } catch (...) {
             window.setTextInputError("Gagal memuat file: " + filename);
@@ -1015,6 +1158,7 @@ int main() {
         if (phase != Phase::POST_ROLL && phase != Phase::AWAITING_ACTION) return;
         if (!engine.hasDiceRolled()) return;
 
+        int prevIdx = engine.getCurrentTurnIdx();
         try {
             engine.endTurn();
         } catch (InvalidCommandException &) {
@@ -1023,6 +1167,8 @@ int main() {
 
         lastD1 = 0; lastD2 = 0;
         if (checkGameOver(engine, window)) return;
+        // Hanya draw kartu di awal giliran pemain baru (bukan bonus double)
+        newPlayerTurnStarted = (engine.getCurrentTurnIdx() != prevIdx);
         turnJustStarted = true;
         phase = Phase::AWAITING_ACTION;
     });
@@ -1044,6 +1190,7 @@ int main() {
             }
         }
         if (opts.empty()) return;
+        opts.push_back("BATAL");
         PopupState ps;
         ps.type = PopupType::LIQUIDATION;
         ps.title = "GADAI PROPERTI";
@@ -1068,6 +1215,7 @@ int main() {
             }
         }
         if (opts.empty()) return;
+        opts.push_back("BATAL");
         PopupState ps;
         ps.type = PopupType::LIQUIDATION;
         ps.title = "TEBUS PROPERTI";
@@ -1199,13 +1347,14 @@ int main() {
         auto logs = logger.getLogs(-1);
         vector<string> lines;
         lines.push_back("=== LOG TRANSAKSI (" + to_string(logs.size()) + " entri) ===");
-        int from = (int)logs.size() > 15 ? (int)logs.size() - 15 : 0;
+        int from = (int)logs.size() > 20 ? (int)logs.size() - 20 : 0;
         for (int i = from; i < (int)logs.size(); i++) {
             auto &le = logs[i];
-            lines.push_back("[T" + to_string(le.turn) + "] " +
-                            le.username + " | " + le.detail);
+            lines.push_back("[T" + to_string(le.turn) + "] [" +
+                            actionTypeToString(le.actionType) + "] " +
+                            le.username + ": " + le.detail);
         }
-        if (logs.size() > 15) lines.push_back("... (hanya 15 terakhir ditampilkan)");
+        if ((int)logs.size() > 20) lines.push_back("... (hanya 20 terakhir ditampilkan)");
         window.showPropertyInfo("LOG TRANSAKSI", lines);
     });
 
@@ -1230,11 +1379,117 @@ int main() {
             auto &cards = p->getHandCards();
             if (ci >= (int)cards.size()) return;
             SkillCard *card = cards[ci];
-            card->use(*p, engine);
-            p->setHasUsedCardThisTurn(true);
-            p->removeCard(ci);
-            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
-                            LogActionType::CARD, card->getCardName());
+            SkillCardEffect eff = card->use(*p, engine);
+
+            auto removeUsedCard = [&](int idx) {
+                p->setHasUsedCardThisTurn(true);
+                p->removeCard(idx);
+            };
+
+            switch (eff) {
+            case SkillCardEffect::MOVE: {
+                MoveCard *mc = dynamic_cast<MoveCard *>(card);
+                int steps = mc ? mc->getSteps() : 1;
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "MoveCard maju " + to_string(steps) + " petak");
+                removeUsedCard(ci);
+                p->move(steps);
+                engine.markDiceRolled(); // kartu ini menggantikan lemparan dadu
+                phase = Phase::ROLLED;
+                processTileEffect(engine, window, logger);
+                break;
+            }
+            case SkillCardEffect::DISCOUNT: {
+                DiscountCard *dc = dynamic_cast<DiscountCard *>(card);
+                int pct = dc ? dc->getDiscountPercent() : 10;
+                p->setActiveDiscountPercent(pct);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "DiscountCard diskon " + to_string(pct) + "%");
+                removeUsedCard(ci);
+                break;
+            }
+            case SkillCardEffect::SHIELD: {
+                p->setShieldActive(true);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, "ShieldCard: imun tagihan giliran ini");
+                removeUsedCard(ci);
+                break;
+            }
+            case SkillCardEffect::TELEPORT: {
+                // Popup untuk pilih tujuan (semua petak 1–40)
+                pendingSkillCard = card;
+                vector<string> opts;
+                for (int i = 1; i <= board->getTotalTiles(); i++) {
+                    Tile *t = board->getTileAt(i);
+                    opts.push_back("[" + to_string(i) + "] " + t->getName());
+                }
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "TELEPORT - Pilih Tujuan";
+                ps.message = "Pilih petak tujuan:";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::TELEPORT_SELECT;
+                break;
+            }
+            case SkillCardEffect::LASSO: {
+                // Popup pilih pemain lawan
+                lassoTargets.clear();
+                vector<string> opts;
+                for (Player *pl : engine.getAllPlayers()) {
+                    if (pl != p && pl->getStatus() != PlayerStatus::BANKRUPT) {
+                        lassoTargets.push_back(pl);
+                        opts.push_back(pl->getUsername() + " (petak " +
+                                       to_string(pl->getPosition() + 1) + ")");
+                    }
+                }
+                if (lassoTargets.empty()) break;
+                pendingSkillCard = card;
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "LASSO - Pilih Target";
+                ps.message = "Tarik pemain lawan ke petakmu saat ini\n(posisi " +
+                             to_string(p->getPosition() + 1) + "):";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::LASSO_SELECT;
+                break;
+            }
+            case SkillCardEffect::DEMOLITION: {
+                // Popup pilih properti lawan yang punya bangunan
+                demolitionCandidates.clear();
+                vector<string> opts;
+                for (Player *pl : engine.getAllPlayers()) {
+                    if (pl == p || pl->getStatus() == PlayerStatus::BANKRUPT) continue;
+                    for (PropertyTile *prop : pl->getOwnedProperties()) {
+                        if (auto *st = dynamic_cast<StreetTile *>(prop)) {
+                            if (st->getRentLevel() > 0) {
+                                demolitionCandidates.push_back(st);
+                                string lvl = st->getRentLevel() == 5 ? "Hotel" :
+                                    to_string(st->getRentLevel()) + " Rumah";
+                                opts.push_back(st->getKode() + " [" + pl->getUsername() +
+                                               "] " + lvl);
+                            }
+                        }
+                    }
+                }
+                if (demolitionCandidates.empty()) break;
+                pendingSkillCard = card;
+                PopupState ps;
+                ps.type = PopupType::BUY_PROPERTY;
+                ps.title = "DEMOLITION - Pilih Properti";
+                ps.message = "Pilih properti lawan untuk dihancurkan 1 bangunan:";
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::DEMOLITION_SELECT;
+                break;
+            }
+            default:
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::CARD, card->getCardName());
+                removeUsedCard(ci);
+                break;
+            }
         });
     }
 
@@ -1272,6 +1527,7 @@ int main() {
                         window.tick();
                         continue;
                     }
+                    newPlayerTurnStarted = true;
                     turnJustStarted = true;
                     continue;
                 }
@@ -1279,8 +1535,40 @@ int main() {
                 // Reset discount
                 p->setActiveDiscountPercent(0);
 
-                // Jail popup
-                if (p->getStatus() == PlayerStatus::JAILED) {
+                // Draw 1 kartu di awal giliran pemain baru (spec: "awal giliran, semua pemain mendapat 1 kartu acak")
+                bool droppingCard = false;
+                if (newPlayerTurnStarted) {
+                    newPlayerTurnStarted = false;
+                    SkillCard *newCard = engine.drawSkillCard();
+                    if (newCard) {
+                        if ((int)p->getHandCards().size() < 3) {
+                            p->addCard(newCard);
+                            logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                            LogActionType::CARD,
+                                            "Dapat kartu awal giliran: " + newCard->getCardName());
+                        } else {
+                            // Tangan penuh — paksa buang 1 kartu
+                            pendingNewCard = newCard;
+                            vector<string> opts;
+                            for (const SkillCard *c : p->getHandCards())
+                                opts.push_back(c->getCardName() + ": " + c->getCardDescription());
+                            PopupState ps;
+                            ps.type = PopupType::BUY_PROPERTY;
+                            ps.title = "BUANG KARTU";
+                            ps.message = "Tangan penuh! Pilih kartu untuk dibuang.\n"
+                                         "Kartu baru: " + newCard->getCardName() +
+                                         "\n" + newCard->getCardDescription();
+                            ps.options = opts;
+                            window.showPopup(ps);
+                            pending = Pending::DROP_CARD;
+                            phase = Phase::EFFECT_PENDING;
+                            droppingCard = true;
+                        }
+                    }
+                }
+
+                // Jail popup — ditunda jika sedang DROP_CARD
+                if (!droppingCard && p->getStatus() == PlayerStatus::JAILED) {
                     int fine = 50;
                     PopupState ps;
                     ps.type = PopupType::JAIL;

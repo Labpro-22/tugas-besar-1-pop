@@ -34,6 +34,7 @@ class GameEngine {
     int roundCount;     // Jumlah putaran yang sudah berjalan
     bool diceRolled;
     bool turnEnded;
+    bool lastRollWasDouble;
 
     // Utilitas Internal
     void checkWinCondition();
@@ -69,7 +70,16 @@ class GameEngine {
 
     bool hasDiceRolled() const { return diceRolled; }
     bool isTurnEnded() const { return turnEnded; }
+    void markDiceRolled() { diceRolled = true; } // Untuk kartu yang menggantikan lemparan dadu
     const std::vector<SkillCard *> &getSkillDeckCards() const;
+
+    // Card draw / discard helpers
+    SkillCard *drawSkillCard();
+    void discardSkillCard(SkillCard *card);
+    ActionCard *drawChanceCard();
+    void discardChanceCard(ActionCard *card);
+    ActionCard *drawCommunityCard();
+    void discardCommunityCard(ActionCard *card);
 
     void setCurrentTurnIdx(int idx) { currentTurnIdx = idx; }
     void setRoundCount(int count) { roundCount = count; }

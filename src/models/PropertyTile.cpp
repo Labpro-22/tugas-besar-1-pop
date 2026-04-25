@@ -128,6 +128,12 @@ void StreetTile::demolish() {
     hasBuilding = false;
 }
 
+void StreetTile::removeOneBuilding() {
+    if (rentLevel <= 0) return;
+    rentLevel--;
+    if (rentLevel == 0) hasBuilding = false;
+}
+
 bool StreetTile::hasBuildings() const { return this->hasBuilding; }
 
 int StreetTile::getHouseCost() const { return this->houseCost; }

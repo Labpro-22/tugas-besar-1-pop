@@ -105,7 +105,7 @@ static void printDoubleLine(int len = 52) {
   std::cout << std::string(len, '=') << "\n";
 }
 
-void Formatter::printBoard(const Board &board,
+void Formatter::printBoard(Board &board,
                            const std::vector<Player> &players, int currentTurn,
                            int maxTurn) {
 

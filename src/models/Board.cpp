@@ -42,6 +42,16 @@ Tile* Board::getTileByKode(const std::string& kode) {
     return getTileAt(it->second);
 }
 
+std::vector<Tile*> Board::getTileByColorGroup(const std::string& colorGroup) {
+    std::vector<Tile*> colorGroupTiles;
+    for (Tile* tile : tiles) {
+        if (tile->getColorGroup() == colorGroup) {
+            colorGroupTiles.push_back(tile);
+        }
+    }
+    return colorGroupTiles;
+}
+
 
 int Board::getJailPosition() const {
     return jailPositionIndex;

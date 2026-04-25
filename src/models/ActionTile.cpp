@@ -1,4 +1,6 @@
 #include "../../include/models/ActionTile.hpp"
+#include <iostream>
+using namespace std;
 //ActionTile
 
 ActionTile::ActionTile(int index, const std::string& code, const std::string& name)
@@ -6,6 +8,16 @@ ActionTile::ActionTile(int index, const std::string& code, const std::string& na
 
 EffectType ActionTile::onLanded(Player& player){
     return triggerEffect(player);
+}
+
+int ActionTile::calcRent(int diceRoll) const {
+    // ActionTile tidak memiliki harga sewa
+    return 0;
+}
+
+int ActionTile::getOwnerId() const {
+    // ActionTile tidak dimiliki siapapun
+    return -1;
 }
 
 //CardTile
@@ -123,10 +135,6 @@ void FestivalTile::applyFestivalToProperty(Player& player){
 SpecialTile::SpecialTile(int index, const std::string& code, const std::string& name)
 :ActionTile(index,code,name){}
 
-EffectType SpecialTile::onLanded(Player& player) {
-    return handleArrival(player);
-}
-
 //GoTile
 
 GoTile::GoTile(int index, const std::string& code, const std::string& name,
@@ -177,7 +185,7 @@ void JailTile::releasePlayer(Player& player) {
 }
  
 EffectType JailTile::processTurnInJail(Player& player) {
-    int turnsInJail = player.getJailTurns();
+    int turnsInJail = player.getJailTurnsLeft();
  
     // Giliran ke-3 wajib bayar denda, tidak ada pilihan lain
     if (turnsInJail >= 3) {

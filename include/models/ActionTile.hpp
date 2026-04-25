@@ -9,12 +9,17 @@
 class ActionTile : public Tile {
 public:
     ActionTile(int index, const std::string& code, const std::string& name);
+    virtual ~ActionTile() = default;
  
     // onLanded mendelegasikan ke triggerEffect — subclass tidak perlu override keduanya
-    EffectType onLanded(Player& player);
- 
+    EffectType onLanded(Player& player) override;
+
     // Pure virtual — setiap ActionTile punya efek berbeda
     virtual EffectType triggerEffect(Player& player) = 0;
+
+    int calcRent(int diceRoll = 0) const override;
+    int calcValue() const override {return 0;}
+    int getOwnerId() const override;
 };
 
 
@@ -80,9 +85,6 @@ class SpecialTile : public ActionTile {
 public:
     SpecialTile(int index, const std::string& code, const std::string& name);
  
-    // onLanded mendelegasikan ke handleArrival — konsisten dengan ActionTile
-    EffectType onLanded(Player& player) ;
- 
     // Pure virtual — setiap petak spesial punya logika kedatangan unik
     virtual EffectType handleArrival(Player& player) = 0; // fungsi khusus SpecialTile Class mirip dengan onLanded
 
@@ -111,7 +113,7 @@ public:
     JailTile(int index, const std::string& code, const std::string& name,
              int fine);
  
-    EffectType handleArrival(Player& player);
+    EffectType handleArrival(Player& player) override;
 
     // Kirim pemain ke penjara (dipanggil GoToJailTile dan kartu "Masuk Penjara
     void imprisonPlayer(Player& player);

@@ -1,7 +1,7 @@
 #ifndef CARD_HPP
 #define CARD_HPP
 
-#include "../../include/core/Enums.hpp"
+#include "../core/Enums.hpp"
 #include <string>
 #include <vector>
 #include <algorithm>

@@ -16,9 +16,6 @@ EffectType PropertyTile:: onLanded(Player& player){
     return EffectType::NONE;
 }
 
-void PropertyTile:: payRent(){
-}
-
 void PropertyTile:: mortgage(){
     if(status != 1){
         return;
@@ -33,7 +30,7 @@ void PropertyTile:: unmortgage(){
     status = 1;
 }
 
-void PropertyTile:: sellTobank(Player& owner){
+void PropertyTile::sellTobank(Player& owner){
     ownerId = -1;
     status = 0;
 }
@@ -87,7 +84,7 @@ EffectType StreetTile::onLanded(Player& player) {
     return EffectType::NONE;
 }
 
-void StreetTile:: sellTobank(Player& owner){
+void StreetTile::sellTobank(Player& owner){
     // ini kayaknya redundan sama mortgage dari PropertyTile
 }
 
@@ -122,7 +119,7 @@ void StreetTile::demolish(){
     hasBuilding = false;
 }
 
-bool StreetTile:: hasBuildings(){return this->hasBuilding;}
+bool StreetTile:: hasBuildings() const{return this->hasBuilding;}
 
 int StreetTile::getHouseCost() const{return this->houseCost;}
 
@@ -147,6 +144,16 @@ int StreetTile::calcValue() const {
     else return rentLevel * houseCost;
 }
 
+void StreetTile::setFestivalEffect(int multiplier){
+    this->isFestivalEffectActive = true;
+    this->festivalEffectMultiplier = multiplier;
+}
+
+void StreetTile::clearFestivalEffect(){
+    this->isFestivalEffectActive = false;
+    this->festivalEffectMultiplier = 1;
+}
+
 // RailroadTile
 
 RailroadTile::RailroadTile(int index, const std::string& code, const std::string& name,
@@ -154,7 +161,7 @@ RailroadTile::RailroadTile(int index, const std::string& code, const std::string
                  const map<int, int>& rentByCount)
                  :PropertyTile(index,code, name,0,mortgageValue), rentByCount(rentByCount){}
 
-int RailroadTile::calcRent(int diceRoll = 0) const {
+int RailroadTile::calcRent(int diceRoll) const {
     auto it = rentByCount.find(railroadOwnedCount);
     if(it != rentByCount.end()){
         return it->second;

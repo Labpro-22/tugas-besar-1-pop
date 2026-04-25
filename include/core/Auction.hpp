@@ -20,7 +20,7 @@ class Auction {
     // Run utama
     void run();
 
-    // Method memasang bid untuk player pada gilirannya 
+    // Method memasang bid untuk player pada gilirannya
     bool placeBid(Player *bidder, int amount);
 
     // Method pass untuk player pada gilirannya

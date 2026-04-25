@@ -1,5 +1,4 @@
 #include "../../include/core/Auction.hpp"
-#include "../../include/core/Exceptions.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -11,15 +10,15 @@ using namespace std;
 // Objek Auction hanya valid jika punya properti target dan minimal 1 penawar.
 // Jika activeBidders kosong saat konstruksi, run() langsung return tanpa efek.
 Auction::Auction(PropertyTile *property, const vector<Player *> &initialBidders)
-    : targetProperty(property),
-      activeBidders(initialBidders),
-      currentHighestBid(0),
-      currentHighestBidder(nullptr),
+    : targetProperty(property), activeBidders(initialBidders),
+      currentHighestBid(0), currentHighestBidder(nullptr),
       currentBidderIndex(0) {}
 
 bool Auction::placeBid(Player *bidder, int amount) {
-    if (amount <= currentHighestBid) return false;
-    if (bidder->getMoney() < amount) return false;
+    if (amount <= currentHighestBid)
+        return false;
+    if (bidder->getMoney() < amount)
+        return false;
 
     currentHighestBid = amount;
     currentHighestBidder = bidder;
@@ -28,7 +27,8 @@ bool Auction::placeBid(Player *bidder, int amount) {
 
 void Auction::passTurn(Player *bidder) {
     auto it = find(activeBidders.begin(), activeBidders.end(), bidder);
-    if (it == activeBidders.end()) return;
+    if (it == activeBidders.end())
+        return;
 
     int removedIdx = (int)(it - activeBidders.begin());
     activeBidders.erase(it);
@@ -42,7 +42,8 @@ void Auction::passTurn(Player *bidder) {
 }
 
 void Auction::delegateProperty() {
-    if (!currentHighestBidder || !targetProperty) return;
+    if (!currentHighestBidder || !targetProperty)
+        return;
 
     *currentHighestBidder -= currentHighestBid;
 
@@ -54,7 +55,8 @@ void Auction::delegateProperty() {
 }
 
 void Auction::run() {
-    if (activeBidders.empty() || !targetProperty) return;
+    if (activeBidders.empty() || !targetProperty)
+        return;
 
     cout << "\n=== LELANG DIMULAI: " << targetProperty->getName() << " ===\n";
 
@@ -65,8 +67,7 @@ void Auction::run() {
         Player *cur = activeBidders[currentBidderIndex];
 
         cout << "\n[LELANG] Giliran   : " << cur->getUsername()
-             << "\n[LELANG] Bid saat ini: Rp"
-             << currentHighestBid;
+             << "\n[LELANG] Bid saat ini: Rp" << currentHighestBid;
         if (currentHighestBidder)
             cout << " (oleh " << currentHighestBidder->getUsername() << ")";
         cout << "\n[LELANG] Kas Anda  : Rp" << cur->getMoney()
@@ -81,11 +82,13 @@ void Auction::run() {
             // Index sudah dikoreksi oleh passTurn — JANGAN increment lagi
         } else if (placeBid(cur, amount)) {
             cout << cur->getUsername() << " bid Rp" << amount << ".\n";
-            currentBidderIndex = (currentBidderIndex + 1) % (int)activeBidders.size();
+            currentBidderIndex =
+                (currentBidderIndex + 1) % (int)activeBidders.size();
         } else {
             cout << "Bid tidak valid (harus > Rp" << currentHighestBid
                  << " dan uang cukup).\n";
-            currentBidderIndex = (currentBidderIndex + 1) % (int)activeBidders.size();
+            currentBidderIndex =
+                (currentBidderIndex + 1) % (int)activeBidders.size();
         }
     }
 

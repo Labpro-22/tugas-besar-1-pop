@@ -1,15 +1,15 @@
 #include "../../include/core/Player.hpp"
 #include "../../include/core/Exceptions.hpp"
-#include "../../include/models/PropertyTile.hpp"
 #include "../../include/models/Card.hpp"
+#include "../../include/models/PropertyTile.hpp"
 #include <algorithm>
 
 Player::Player(string usn, int startingMoney)
-    : playerId(-1), username(usn), money(startingMoney), position(0), status(PlayerStatus::ACTIVE), activeDiscount(0), jailTurnsLeft(0), doubleStreak(0), hasUsedCardThisTurn(false), shieldActive(false) {}
+    : playerId(-1), username(usn), money(startingMoney), position(0),
+      status(PlayerStatus::ACTIVE), activeDiscount(0), jailTurnsLeft(0),
+      doubleStreak(0), hasUsedCardThisTurn(false), shieldActive(false) {}
 
-void Player::move(int steps) {
-    position = (position + steps) % 40;
-}
+void Player::move(int steps) { position = (position + steps) % 40; }
 
 void Player::goToJail() {
     status = PlayerStatus::JAILED;
@@ -28,13 +28,9 @@ void Player::resetTurnFlags() {
     shieldActive = false;
 }
 
-void Player::setShieldActive(bool active) {
-    shieldActive = active;
-}
+void Player::setShieldActive(bool active) { shieldActive = active; }
 
-void Player::incrementDoubleStreak() {
-    doubleStreak++;
-}
+void Player::incrementDoubleStreak() { doubleStreak++; }
 
 void Player::decrementJailTurn() {
     if (jailTurnsLeft > 0) {
@@ -42,7 +38,7 @@ void Player::decrementJailTurn() {
     }
 }
 
-void Player::addCard(SkillCard* card) {
+void Player::addCard(SkillCard *card) {
     if (handCards.size() >= 3) {
         throw MaxCardLimitException();
     }
@@ -50,16 +46,16 @@ void Player::addCard(SkillCard* card) {
 }
 
 void Player::removeCard(int idx) {
-    if (idx >= 0 && idx < handCards.size()) {
+    if (idx >= 0 && static_cast<size_t>(idx) < handCards.size()) {
         handCards.erase(handCards.begin() + idx);
     }
 }
 
-void Player::addProperty(PropertyTile* property) {
+void Player::addProperty(PropertyTile *property) {
     ownedProperties.push_back(property);
 }
 
-void Player::removeProperty(PropertyTile* property) {
+void Player::removeProperty(PropertyTile *property) {
     auto it = find(ownedProperties.begin(), ownedProperties.end(), property);
     if (it != ownedProperties.end()) {
         ownedProperties.erase(it);
@@ -69,9 +65,11 @@ void Player::removeProperty(PropertyTile* property) {
 string Player::getUsername() const { return username; }
 int Player::getMoney() const { return money; }
 int Player::getPosition() const { return position; }
-PlayerStatus Player::getStatus( ) const { return status; }
-const vector<SkillCard*>& Player::getHandCards() const { return handCards; }
-const vector<PropertyTile*>& Player::getOwnedProperties() const { return ownedProperties; }
+PlayerStatus Player::getStatus() const { return status; }
+const vector<SkillCard *> &Player::getHandCards() const { return handCards; }
+const vector<PropertyTile *> &Player::getOwnedProperties() const {
+    return ownedProperties;
+}
 int Player::getJailTurnsLeft() const { return jailTurnsLeft; }
 int Player::getDoubleStreak() const { return doubleStreak; }
 bool Player::getHasUsedCardThisTurn() const { return hasUsedCardThisTurn; }
@@ -84,15 +82,16 @@ void Player::setActiveDiscountPercent(int percent) { activeDiscount = percent; }
 int Player::getId() const { return playerId; }
 void Player::setId(int id) { playerId = id; }
 
-Player& Player::operator+=(int amount) {
-    if (amount > 0) money += amount;
+Player &Player::operator+=(int amount) {
+    if (amount > 0)
+        money += amount;
     return *this;
 }
 
 int Player::getWealth() const {
     int totalWealth = money;
-    
-    for (PropertyTile* prop : ownedProperties) {
+
+    for (PropertyTile *prop : ownedProperties) {
         totalWealth += prop->getPrice();
         totalWealth += prop->calcValue();
     }
@@ -100,16 +99,18 @@ int Player::getWealth() const {
     return totalWealth;
 }
 
-Player& Player::operator-=(int amount) {
-    if (amount <= 0) return *this;
-    
+Player &Player::operator-=(int amount) {
+    if (amount <= 0)
+        return *this;
+
     if (money < amount) {
-        throw NotEnoughMoneyException(money, amount, "transaksi (" + username + ")");
+        throw NotEnoughMoneyException(money, amount,
+                                      "transaksi (" + username + ")");
     }
     money -= amount;
     return *this;
 }
 
-bool Player::operator<(const Player& other) const {
+bool Player::operator<(const Player &other) const {
     return this->getWealth() < other.getWealth();
 }

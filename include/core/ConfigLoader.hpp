@@ -1,15 +1,15 @@
 #pragma once
-#include <string>
-#include <fstream>
-#include <vector>
-#include <map>
 #include "../../include/models/Tile.hpp"
+#include <fstream>
+#include <map>
+#include <string>
+#include <vector>
 
 using namespace std;
 
 class ConfigLoader {
-private:
-    static ConfigLoader* instance;
+  private:
+    static ConfigLoader *instance;
     ConfigLoader();
 
     ifstream currentFile;
@@ -30,14 +30,14 @@ private:
     int initialMoney;
 
     class TileDefinition {
-    public:
+      public:
         int index;
         string kode;
         string nama;
         string tipeStr;
 
-        TileDefinition(int index, const string& kode,
-                       const string& nama, const string& tipeStr);
+        TileDefinition(int index, const string &kode, const string &nama,
+                       const string &tipeStr);
 
         int getIndex() const;
         string getKode() const;
@@ -55,18 +55,18 @@ private:
     void buildLayoutFromHardcode();
     void buildLayoutFromFile();
 
-    Tile* instantiateTile(const TileDefinition& def);
+    Tile *instantiateTile(const TileDefinition &def);
     void linkSpecialTiles();
 
-public:
-    static ConfigLoader* getInstance();
+  public:
+    static ConfigLoader *getInstance();
     ~ConfigLoader();
 
     void loadAllConfigs();
     void parsePropertyConfig();
     void parseActionTileConfig();
     void validateBoardLayout();
-    void setConfigFilePath(const string& path);
+    void setConfigFilePath(const string &path);
     bool getIsConfigValid() const;
 
     // Getter untuk GameEngine setelah loadAllConfigs() selesai

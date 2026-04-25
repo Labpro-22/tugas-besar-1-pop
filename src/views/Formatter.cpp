@@ -32,717 +32,731 @@ const std::string BG_WHITE = "\033[47m";
 } // namespace Color
 
 static std::string fmtMoney(int amount) {
-  std::string s = std::to_string(amount);
-  int pos = (int)s.length() - 3;
-  while (pos > 0) {
-    s.insert(pos, ".");
-    pos -= 3;
-  }
-  return "M" + s;
+    std::string s = std::to_string(amount);
+    int pos = (int)s.length() - 3;
+    while (pos > 0) {
+        s.insert(pos, ".");
+        pos -= 3;
+    }
+    return "M" + s;
 }
 
 static std::string colorGroupAnsi(const std::string &group) {
-  if (group == "COKLAT")
-    return "\033[38;5;130m";
-  if (group == "BIRU_MUDA")
-    return "\033[96m";
-  if (group == "MERAH_MUDA")
-    return "\033[95m";
-  if (group == "ORANGE")
-    return "\033[38;5;208m";
-  if (group == "MERAH")
-    return "\033[91m";
-  if (group == "KUNING")
-    return "\033[93m";
-  if (group == "HIJAU")
-    return "\033[92m";
-  if (group == "BIRU_TUA")
-    return "\033[94m";
-  if (group == "ABU_ABU")
+    if (group == "COKLAT")
+        return "\033[38;5;130m";
+    if (group == "BIRU_MUDA")
+        return "\033[96m";
+    if (group == "MERAH_MUDA")
+        return "\033[95m";
+    if (group == "ORANGE")
+        return "\033[38;5;208m";
+    if (group == "MERAH")
+        return "\033[91m";
+    if (group == "KUNING")
+        return "\033[93m";
+    if (group == "HIJAU")
+        return "\033[92m";
+    if (group == "BIRU_TUA")
+        return "\033[94m";
+    if (group == "ABU_ABU")
+        return "\033[37m";
     return "\033[37m";
-  return "\033[37m";
 }
 
 static std::string tileColorLabel(const std::string &group) {
-  if (group == "COKLAT")
-    return "[CK]";
-  if (group == "BIRU_MUDA")
-    return "[BM]";
-  if (group == "MERAH_MUDA")
-    return "[PK]";
-  if (group == "ORANGE")
-    return "[OR]";
-  if (group == "MERAH")
-    return "[MR]";
-  if (group == "KUNING")
-    return "[KN]";
-  if (group == "HIJAU")
-    return "[HJ]";
-  if (group == "BIRU_TUA")
-    return "[BT]";
-  if (group == "ABU_ABU")
-    return "[AB]";
-  return "[DF]";
+    if (group == "COKLAT")
+        return "[CK]";
+    if (group == "BIRU_MUDA")
+        return "[BM]";
+    if (group == "MERAH_MUDA")
+        return "[PK]";
+    if (group == "ORANGE")
+        return "[OR]";
+    if (group == "MERAH")
+        return "[MR]";
+    if (group == "KUNING")
+        return "[KN]";
+    if (group == "HIJAU")
+        return "[HJ]";
+    if (group == "BIRU_TUA")
+        return "[BT]";
+    if (group == "ABU_ABU")
+        return "[AB]";
+    return "[DF]";
 }
 
 static std::string padLeft(const std::string &s, int width) {
-  if ((int)s.size() >= width)
-    return s.substr(0, width);
-  return s + std::string(width - s.size(), ' ');
+    if ((int)s.size() >= width)
+        return s.substr(0, width);
+    return s + std::string(width - s.size(), ' ');
 }
 
 static std::string padRight(const std::string &s, int width) {
-  if ((int)s.size() >= width)
-    return s.substr(0, width);
-  return std::string(width - s.size(), ' ') + s;
+    if ((int)s.size() >= width)
+        return s.substr(0, width);
+    return std::string(width - s.size(), ' ') + s;
 }
 
 static void printLine(char ch = '-', int len = 52) {
-  std::cout << std::string(len, ch) << "\n";
+    std::cout << std::string(len, ch) << "\n";
 }
 
 static void printDoubleLine(int len = 52) {
-  std::cout << std::string(len, '=') << "\n";
+    std::cout << std::string(len, '=') << "\n";
 }
 
-void Formatter::printBoard(Board &board,
-                           const std::vector<Player> &players, int currentTurn,
-                           int maxTurn) {
+void Formatter::printBoard(Board &board, const std::vector<Player> &players,
+                           int currentTurn, int maxTurn) {
 
-  std::map<int, std::vector<int>> posMap;
-  for (int i = 0; i < (int)players.size(); i++) {
-    int pos = players[i].getPosition();
-    posMap[pos].push_back(i + 1);
-  }
-
-  std::vector<int> jailedPlayers;
-  std::vector<int> visitingPlayers;
-  for (int i = 0; i < (int)players.size(); i++) {
-    if (players[i].getStatus() == PlayerStatus::JAILED)
-      jailedPlayers.push_back(i + 1);
-    else if (players[i].getPosition() == 11)
-      visitingPlayers.push_back(i + 1);
-  }
-
-  auto renderCell = [&](int tileIdx) -> std::pair<std::string, std::string> {
-    if (tileIdx < 1 || tileIdx > 40)
-      return {"          ", "          "};
-
-    Tile *tile = board.getTileAt(tileIdx);
-    if (!tile)
-      return {"          ", "          "};
-
-    std::string kode = tile->getKode();
-
-    std::string colorLabel = "[DF]";
-    std::string colorAnsi = "";
-    std::string resetAnsi = "";
-
-    PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-    StreetTile *st = dynamic_cast<StreetTile *>(tile);
-
-    if (st) {
-      colorLabel = tileColorLabel(st->getColorGroup());
-      colorAnsi = colorGroupAnsi(st->getColorGroup());
-      resetAnsi = Color::RESET;
-    } else if (dynamic_cast<RailroadTile *>(tile) ||
-               dynamic_cast<UtilityTile *>(tile)) {
-      colorLabel = "[AB]";
+    std::map<int, std::vector<int>> posMap;
+    for (int i = 0; i < (int)players.size(); i++) {
+        int pos = players[i].getPosition();
+        posMap[pos].push_back(i + 1);
     }
 
-    std::string line1 =
-        colorAnsi + colorLabel + " " + padLeft(kode, 4) + resetAnsi;
+    std::vector<int> jailedPlayers;
+    std::vector<int> visitingPlayers;
+    for (int i = 0; i < (int)players.size(); i++) {
+        if (players[i].getStatus() == PlayerStatus::JAILED)
+            jailedPlayers.push_back(i + 1);
+        else if (players[i].getPosition() == 11)
+            visitingPlayers.push_back(i + 1);
+    }
 
-    std::string line2 = "";
+    auto renderCell = [&](int tileIdx) -> std::pair<std::string, std::string> {
+        if (tileIdx < 1 || tileIdx > 40)
+            return {"          ", "          "};
 
-    if (prop) {
-      int status = prop->getStatus();
-      if (status == 1) {
+        Tile *tile = board.getTileAt(tileIdx);
+        if (!tile)
+            return {"          ", "          "};
 
-        int oid = prop->getOwnerId();
-        std::string ownerStr = "P" + std::to_string(oid + 1);
+        std::string kode = tile->getKode();
+
+        std::string colorLabel = "[DF]";
+        std::string colorAnsi = "";
+        std::string resetAnsi = "";
+
+        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
+        StreetTile *st = dynamic_cast<StreetTile *>(tile);
 
         if (st) {
-          int lvl = st->getRentLevel();
-          std::string bldg = "";
-          if (st->hasBuildings()) {
-            if (lvl == 5)
-              bldg = " *";
-            else
-              bldg = " " + std::string(lvl, '^');
-          }
-          line2 = ownerStr + bldg;
-        } else {
-          line2 = ownerStr;
+            colorLabel = tileColorLabel(st->getColorGroup());
+            colorAnsi = colorGroupAnsi(st->getColorGroup());
+            resetAnsi = Color::RESET;
+        } else if (dynamic_cast<RailroadTile *>(tile) ||
+                   dynamic_cast<UtilityTile *>(tile)) {
+            colorLabel = "[AB]";
         }
-      } else if (status == 2) {
-        line2 = "[M]";
-      }
-    }
 
-    auto it = posMap.find(tileIdx);
-    if (it != posMap.end()) {
-      std::string pions = "";
-      for (int pn : it->second) {
-        if (tileIdx == 11) {
+        std::string line1 =
+            colorAnsi + colorLabel + " " + padLeft(kode, 4) + resetAnsi;
 
-          bool jailed = false;
-          for (int jn : jailedPlayers)
-            if (jn == pn) {
-              jailed = true;
-              break;
+        std::string line2 = "";
+
+        if (prop) {
+            int status = prop->getStatus();
+            if (status == 1) {
+
+                int oid = prop->getOwnerId();
+                std::string ownerStr = "P" + std::to_string(oid + 1);
+
+                if (st) {
+                    int lvl = st->getRentLevel();
+                    std::string bldg = "";
+                    if (st->hasBuildings()) {
+                        if (lvl == 5)
+                            bldg = " *";
+                        else
+                            bldg = " " + std::string(lvl, '^');
+                    }
+                    line2 = ownerStr + bldg;
+                } else {
+                    line2 = ownerStr;
+                }
+            } else if (status == 2) {
+                line2 = "[M]";
             }
-          pions += jailed ? " IN" : " V";
-        } else {
-          pions += " (" + std::to_string(pn) + ")";
         }
-      }
-      line2 += pions;
+
+        auto it = posMap.find(tileIdx);
+        if (it != posMap.end()) {
+            std::string pions = "";
+            for (int pn : it->second) {
+                if (tileIdx == 11) {
+
+                    bool jailed = false;
+                    for (int jn : jailedPlayers)
+                        if (jn == pn) {
+                            jailed = true;
+                            break;
+                        }
+                    pions += jailed ? " IN" : " V";
+                } else {
+                    pions += " (" + std::to_string(pn) + ")";
+                }
+            }
+            line2 += pions;
+        }
+
+        std::string line1_display = colorLabel + " " + padLeft(kode, 4);
+        std::string line2_display = padLeft(line2, 8);
+
+        return {padLeft(line1_display, 10), padLeft(line2_display, 10)};
+    };
+
+    const int W = 10;
+    const std::string SEP = "+----------";
+    const std::string TOP_BOT =
+        SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + "+";
+
+    int topRow[] = {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+
+    int bottomRow[] = {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+
+    int leftCol[] = {20, 19, 18, 17, 16, 15, 14, 13, 12};
+
+    int rightCol[] = {32, 33, 34, 35, 36, 37, 38, 39, 40};
+
+    auto cell = [&](int idx) { return renderCell(idx); };
+
+    std::cout << TOP_BOT << "\n";
+
+    std::cout << "|";
+    for (int idx : topRow) {
+        auto [l1, l2] = cell(idx);
+        std::cout << l1 << "|";
+    }
+    std::cout << "\n";
+
+    std::cout << "|";
+    for (int idx : topRow) {
+        auto [l1, l2] = cell(idx);
+        std::cout << l2 << "|";
+    }
+    std::cout << "\n";
+
+    std::cout << TOP_BOT << "\n";
+
+    std::vector<std::string> centerLines;
+    {
+
+        int panelW = 9 * (W + 1) - 1;
+        std::string border(panelW, ' ');
+
+        std::string title = "================================== ";
+        centerLines.push_back("  " + title);
+
+        std::string title2 = "|| NIMONSPOLI || ";
+        centerLines.push_back("  " + title2);
+
+        std::string title3 = "================================== ";
+        centerLines.push_back("  " + title3);
+
+        std::string turnInfo = "  TURN " + std::to_string(currentTurn) + " / " +
+                               std::to_string(maxTurn) + "  ";
+        centerLines.push_back("    " + turnInfo);
+
+        centerLines.push_back("  ");
+
+        centerLines.push_back("  ---------------------------------- ");
+        centerLines.push_back("  LEGENDA KEPEMILIKAN & STATUS ");
+        centerLines.push_back("  P1-P4 : Properti milik Pemain 1-4 ");
+        centerLines.push_back("  ^ : Rumah | * : Hotel | [M] : Gadai");
     }
 
-    std::string line1_display = colorLabel + " " + padLeft(kode, 4);
-    std::string line2_display = padLeft(line2, 8);
+    while ((int)centerLines.size() < 9)
+        centerLines.push_back("  ");
 
-    return {padLeft(line1_display, 10), padLeft(line2_display, 10)};
-  };
+    for (int row = 0; row < 9; row++) {
 
-  const int W = 10;
-  const std::string SEP = "+----------";
-  const std::string TOP_BOT =
-      SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + SEP + "+";
+        auto [l1, l2] = cell(leftCol[row]);
+        std::cout << "|" << l1 << "|";
 
-  int topRow[] = {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+        std::string midLine = centerLines[row];
 
-  int bottomRow[] = {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+        int panelW = 9 * (W + 1) - 1;
+        if ((int)midLine.size() < panelW)
+            midLine += std::string(panelW - midLine.size(), ' ');
+        else
+            midLine = midLine.substr(0, panelW);
+        std::cout << midLine << "|";
 
-  int leftCol[] = {20, 19, 18, 17, 16, 15, 14, 13, 12};
+        auto [r1, r2] = cell(rightCol[row]);
+        std::cout << r1 << "|\n";
 
-  int rightCol[] = {32, 33, 34, 35, 36, 37, 38, 39, 40};
+        auto [ll1, ll2] = cell(leftCol[row]);
+        std::cout << "|" << ll2 << "|";
+        std::string midLine2 = "";
+        if ((int)midLine2.size() < panelW)
+            midLine2 += std::string(panelW - midLine2.size(), ' ');
+        std::cout << midLine2 << "|";
+        auto [rr1, rr2] = cell(rightCol[row]);
+        std::cout << rr2 << "|\n";
 
-  auto cell = [&](int idx) { return renderCell(idx); };
+        std::cout << "+----------+" << std::string(panelW, ' ')
+                  << "+----------+\n";
+    }
 
-  std::cout << TOP_BOT << "\n";
+    std::cout << TOP_BOT << "\n";
 
-  std::cout << "|";
-  for (int idx : topRow) {
-    auto [l1, l2] = cell(idx);
-    std::cout << l1 << "|";
-  }
-  std::cout << "\n";
+    std::cout << "|";
+    for (int idx : bottomRow) {
+        auto [l1, l2] = cell(idx);
+        std::cout << l1 << "|";
+    }
+    std::cout << "\n";
 
-  std::cout << "|";
-  for (int idx : topRow) {
-    auto [l1, l2] = cell(idx);
-    std::cout << l2 << "|";
-  }
-  std::cout << "\n";
+    std::cout << "|";
+    for (int idx : bottomRow) {
+        auto [l1, l2] = cell(idx);
+        std::cout << l2 << "|";
+    }
+    std::cout << "\n";
 
-  std::cout << TOP_BOT << "\n";
-
-  std::vector<std::string> centerLines;
-  {
-
-    int panelW = 9 * (W + 1) - 1;
-    std::string border(panelW, ' ');
-
-    std::string title = "================================== ";
-    centerLines.push_back("  " + title);
-
-    std::string title2 = "|| NIMONSPOLI || ";
-    centerLines.push_back("  " + title2);
-
-    std::string title3 = "================================== ";
-    centerLines.push_back("  " + title3);
-
-    std::string turnInfo = "  TURN " + std::to_string(currentTurn) + " / " +
-                           std::to_string(maxTurn) + "  ";
-    centerLines.push_back("    " + turnInfo);
-
-    centerLines.push_back("  ");
-
-    centerLines.push_back("  ---------------------------------- ");
-    centerLines.push_back("  LEGENDA KEPEMILIKAN & STATUS ");
-    centerLines.push_back("  P1-P4 : Properti milik Pemain 1-4 ");
-    centerLines.push_back("  ^ : Rumah | * : Hotel | [M] : Gadai");
-  }
-
-  while ((int)centerLines.size() < 9)
-    centerLines.push_back("  ");
-
-  for (int row = 0; row < 9; row++) {
-
-    auto [l1, l2] = cell(leftCol[row]);
-    std::cout << "|" << l1 << "|";
-
-    std::string midLine = centerLines[row];
-
-    int panelW = 9 * (W + 1) - 1;
-    if ((int)midLine.size() < panelW)
-      midLine += std::string(panelW - midLine.size(), ' ');
-    else
-      midLine = midLine.substr(0, panelW);
-    std::cout << midLine << "|";
-
-    auto [r1, r2] = cell(rightCol[row]);
-    std::cout << r1 << "|\n";
-
-    auto [ll1, ll2] = cell(leftCol[row]);
-    std::cout << "|" << ll2 << "|";
-    std::string midLine2 = "";
-    if ((int)midLine2.size() < panelW)
-      midLine2 += std::string(panelW - midLine2.size(), ' ');
-    std::cout << midLine2 << "|";
-    auto [rr1, rr2] = cell(rightCol[row]);
-    std::cout << rr2 << "|\n";
-
-    std::cout << "+----------+" << std::string(panelW, ' ') << "+----------+\n";
-  }
-
-  std::cout << TOP_BOT << "\n";
-
-  std::cout << "|";
-  for (int idx : bottomRow) {
-    auto [l1, l2] = cell(idx);
-    std::cout << l1 << "|";
-  }
-  std::cout << "\n";
-
-  std::cout << "|";
-  for (int idx : bottomRow) {
-    auto [l1, l2] = cell(idx);
-    std::cout << l2 << "|";
-  }
-  std::cout << "\n";
-
-  std::cout << TOP_BOT << "\n";
+    std::cout << TOP_BOT << "\n";
 }
 
 void Formatter::printAkta(const PropertyTile &property) {
-  const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
-  const RailroadTile *rr = dynamic_cast<const RailroadTile *>(&property);
-  const UtilityTile *ut = dynamic_cast<const UtilityTile *>(&property);
+    const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
+    const RailroadTile *rr = dynamic_cast<const RailroadTile *>(&property);
+    const UtilityTile *ut = dynamic_cast<const UtilityTile *>(&property);
 
-  std::string colorAnsi = "";
-  std::string resetAnsi = Color::RESET;
-  std::string jenis = "PROPERTI";
-  std::string colorLabel = "";
+    std::string colorAnsi = "";
+    std::string resetAnsi = Color::RESET;
+    std::string jenis = "PROPERTI";
+    std::string colorLabel = "";
 
-  if (st) {
-    jenis = "STREET";
-    colorLabel = st->getColorGroup();
-    colorAnsi = colorGroupAnsi(colorLabel);
-  } else if (rr) {
-    jenis = "RAILROAD";
-  } else if (ut) {
-    jenis = "UTILITY";
-  }
+    if (st) {
+        jenis = "STREET";
+        colorLabel = st->getColorGroup();
+        colorAnsi = colorGroupAnsi(colorLabel);
+    } else if (rr) {
+        jenis = "RAILROAD";
+    } else if (ut) {
+        jenis = "UTILITY";
+    }
 
-  printDoubleLine(36);
-  std::cout << "| " << Color::BOLD << "AKTA KEPEMILIKAN" << Color::RESET
-            << "                   |\n";
-  if (!colorLabel.empty()) {
-    std::cout << "| " << colorAnsi << "[" << colorLabel << "] "
-              << property.getKode() << " - " << property.getName() << resetAnsi
-              << "\n";
-  } else {
-    std::cout << "| [" << jenis << "] " << property.getKode() << " - "
-              << property.getName() << "\n";
-  }
-  printDoubleLine(36);
+    printDoubleLine(36);
+    std::cout << "| " << Color::BOLD << "AKTA KEPEMILIKAN" << Color::RESET
+              << "                   |\n";
+    if (!colorLabel.empty()) {
+        std::cout << "| " << colorAnsi << "[" << colorLabel << "] "
+                  << property.getKode() << " - " << property.getName()
+                  << resetAnsi << "\n";
+    } else {
+        std::cout << "| [" << jenis << "] " << property.getKode() << " - "
+                  << property.getName() << "\n";
+    }
+    printDoubleLine(36);
 
-  std::cout << "| Harga Beli  : " << padRight(fmtMoney(property.getPrice()), 18)
-            << " |\n";
-  std::cout << "| Nilai Gadai : "
-            << padRight(fmtMoney(property.getmortgageValue()), 18) << " |\n";
-  printLine('-', 36);
+    std::cout << "| Harga Beli  : "
+              << padRight(fmtMoney(property.getPrice()), 18) << " |\n";
+    std::cout << "| Nilai Gadai : "
+              << padRight(fmtMoney(property.getmortgageValue()), 18) << " |\n";
+    printLine('-', 36);
 
-  if (st) {
+    if (st) {
 
-    std::cout << "| Sewa (unimproved)   : "
-              << padRight(fmtMoney(st->calcRent(0)), 11) << " |\n";
+        std::cout << "| Sewa (unimproved)   : "
+                  << padRight(fmtMoney(st->calcRent(0)), 11) << " |\n";
 
-    std::cout << "| Harga Rumah         : "
-              << padRight(fmtMoney(st->getHouseCost()), 11) << " |\n";
-    std::cout << "| Harga Hotel         : "
-              << padRight(fmtMoney(st->getHotelCost()), 11) << " |\n";
-  }
+        std::cout << "| Harga Rumah         : "
+                  << padRight(fmtMoney(st->getHouseCost()), 11) << " |\n";
+        std::cout << "| Harga Hotel         : "
+                  << padRight(fmtMoney(st->getHotelCost()), 11) << " |\n";
+    }
 
-  printLine('-', 36);
+    printLine('-', 36);
 
-  int status = property.getStatus();
-  std::string statusStr;
-  if (status == 0)
-    statusStr = "BANK";
-  else if (status == 1)
-    statusStr = "OWNED (P" + std::to_string(property.getOwnerId() + 1) + ")";
-  else if (status == 2)
-    statusStr = "MORTGAGED [M]";
+    int status = property.getStatus();
+    std::string statusStr;
+    if (status == 0)
+        statusStr = "BANK";
+    else if (status == 1)
+        statusStr =
+            "OWNED (P" + std::to_string(property.getOwnerId() + 1) + ")";
+    else if (status == 2)
+        statusStr = "MORTGAGED [M]";
 
-  std::cout << "| Status : " << padLeft(statusStr, 24) << " |\n";
+    std::cout << "| Status : " << padLeft(statusStr, 24) << " |\n";
 
-  if (st && st->hasBuildings()) {
-    std::cout << "| Bangunan: ";
-    int lvl = st->getRentLevel();
-    if (lvl == 5)
-      std::cout << "Hotel";
-    else
-      std::cout << lvl << " Rumah";
-    std::cout << "                          |\n";
-  }
+    if (st && st->hasBuildings()) {
+        std::cout << "| Bangunan: ";
+        int lvl = st->getRentLevel();
+        if (lvl == 5)
+            std::cout << "Hotel";
+        else
+            std::cout << lvl << " Rumah";
+        std::cout << "                          |\n";
+    }
 
-  printDoubleLine(36);
+    printDoubleLine(36);
 }
 
 void Formatter::printProperti(const Player &player) {
-  std::cout << "=== Properti Milik: " << player.getUsername() << " ===\n";
+    std::cout << "=== Properti Milik: " << player.getUsername() << " ===\n";
 
-  const auto &owned = player.getOwnedProperties();
-  if (owned.empty()) {
-    std::cout << "Kamu belum memiliki properti apapun.\n";
-    return;
-  }
-
-  std::map<std::string, std::vector<const PropertyTile *>> groups;
-  std::vector<const PropertyTile *> railroads;
-  std::vector<const PropertyTile *> utilities;
-
-  for (const PropertyTile *prop : owned) {
-    const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
-    const RailroadTile *rr = dynamic_cast<const RailroadTile *>(prop);
-    const UtilityTile *ut = dynamic_cast<const UtilityTile *>(prop);
-
-    if (st) {
-      groups[st->getColorGroup()].push_back(prop);
-    } else if (rr) {
-      railroads.push_back(prop);
-    } else if (ut) {
-      utilities.push_back(prop);
+    const auto &owned = player.getOwnedProperties();
+    if (owned.empty()) {
+        std::cout << "Kamu belum memiliki properti apapun.\n";
+        return;
     }
-  }
 
-  int totalWealth = 0;
+    std::map<std::string, std::vector<const PropertyTile *>> groups;
+    std::vector<const PropertyTile *> railroads;
+    std::vector<const PropertyTile *> utilities;
 
-  for (auto &[group, props] : groups) {
-    std::string colorAnsi = colorGroupAnsi(group);
-    std::cout << colorAnsi << "[" << group << "]" << Color::RESET << "\n";
-    for (const PropertyTile *prop : props) {
-      const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
-      int status = prop->getStatus();
+    for (const PropertyTile *prop : owned) {
+        const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
+        const RailroadTile *rr = dynamic_cast<const RailroadTile *>(prop);
+        const UtilityTile *ut = dynamic_cast<const UtilityTile *>(prop);
 
-      std::string bldgStr = "";
-      if (st && st->hasBuildings()) {
-        int lvl = st->getRentLevel();
-        bldgStr = lvl == 5 ? " Hotel" : " " + std::to_string(lvl) + " rumah";
-      }
-
-      std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
-
-      std::cout << "  - " << prop->getName() << " (" << prop->getKode() << ")"
-                << bldgStr << " " << fmtMoney(prop->getPrice()) << statusStr
-                << "\n";
-      totalWealth += prop->getPrice();
+        if (st) {
+            groups[st->getColorGroup()].push_back(prop);
+        } else if (rr) {
+            railroads.push_back(prop);
+        } else if (ut) {
+            utilities.push_back(prop);
+        }
     }
-  }
 
-  if (!railroads.empty()) {
-    std::cout << "[STASIUN]\n";
-    for (const PropertyTile *prop : railroads) {
-      int status = prop->getStatus();
-      std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
-      std::cout << "  - " << prop->getName() << " (" << prop->getKode() << ") "
-                << fmtMoney(prop->getPrice()) << statusStr << "\n";
-      totalWealth += prop->getPrice();
+    int totalWealth = 0;
+
+    for (auto &[group, props] : groups) {
+        std::string colorAnsi = colorGroupAnsi(group);
+        std::cout << colorAnsi << "[" << group << "]" << Color::RESET << "\n";
+        for (const PropertyTile *prop : props) {
+            const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
+            int status = prop->getStatus();
+
+            std::string bldgStr = "";
+            if (st && st->hasBuildings()) {
+                int lvl = st->getRentLevel();
+                bldgStr =
+                    lvl == 5 ? " Hotel" : " " + std::to_string(lvl) + " rumah";
+            }
+
+            std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
+
+            std::cout << "  - " << prop->getName() << " (" << prop->getKode()
+                      << ")" << bldgStr << " " << fmtMoney(prop->getPrice())
+                      << statusStr << "\n";
+            totalWealth += prop->getPrice();
+        }
     }
-  }
 
-  if (!utilities.empty()) {
-    std::cout << "[UTILITAS]\n";
-    for (const PropertyTile *prop : utilities) {
-      int status = prop->getStatus();
-      std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
-      std::cout << "  - " << prop->getName() << " (" << prop->getKode() << ") "
-                << fmtMoney(prop->getPrice()) << statusStr << "\n";
-      totalWealth += prop->getPrice();
+    if (!railroads.empty()) {
+        std::cout << "[STASIUN]\n";
+        for (const PropertyTile *prop : railroads) {
+            int status = prop->getStatus();
+            std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
+            std::cout << "  - " << prop->getName() << " (" << prop->getKode()
+                      << ") " << fmtMoney(prop->getPrice()) << statusStr
+                      << "\n";
+            totalWealth += prop->getPrice();
+        }
     }
-  }
 
-  std::cout << "Total kekayaan properti: " << fmtMoney(totalWealth) << "\n";
+    if (!utilities.empty()) {
+        std::cout << "[UTILITAS]\n";
+        for (const PropertyTile *prop : utilities) {
+            int status = prop->getStatus();
+            std::string statusStr = status == 2 ? " MORTGAGED [M]" : " OWNED";
+            std::cout << "  - " << prop->getName() << " (" << prop->getKode()
+                      << ") " << fmtMoney(prop->getPrice()) << statusStr
+                      << "\n";
+            totalWealth += prop->getPrice();
+        }
+    }
+
+    std::cout << "Total kekayaan properti: " << fmtMoney(totalWealth) << "\n";
 }
 
 void Formatter::printLog(const TransactionLogger &logger, int limit) {
-  std::vector<LogEntry> logs = logger.getLogs(limit);
+    std::vector<LogEntry> logs = logger.getLogs(limit);
 
-  if (limit == -1) {
-    std::cout << "=== Log Transaksi Penuh ===\n";
-  } else {
-    std::cout << "=== Log Transaksi (" << limit << " Terakhir) ===\n";
-  }
+    if (limit == -1) {
+        std::cout << "=== Log Transaksi Penuh ===\n";
+    } else {
+        std::cout << "=== Log Transaksi (" << limit << " Terakhir) ===\n";
+    }
 
-  if (logs.empty()) {
-    std::cout << "(belum ada log)\n";
-    return;
-  }
+    if (logs.empty()) {
+        std::cout << "(belum ada log)\n";
+        return;
+    }
 
-  for (const LogEntry &entry : logs) {
-    std::string actionStr = actionTypeToString(entry.actionType);
-    std::cout << "[Turn " << std::setw(2) << entry.turn << "] " << std::setw(10)
-              << std::left << entry.username << " | " << std::setw(12)
-              << std::left << actionStr << " | " << entry.detail << "\n";
-  }
+    for (const LogEntry &entry : logs) {
+        std::string actionStr = actionTypeToString(entry.actionType);
+        std::cout << "[Turn " << std::setw(2) << entry.turn << "] "
+                  << std::setw(10) << std::left << entry.username << " | "
+                  << std::setw(12) << std::left << actionStr << " | "
+                  << entry.detail << "\n";
+    }
 }
 
 void Formatter::printPanelLikuidasi(const Player &player, int debt) {
-  std::cout << Color::BOLD << "=== Panel Likuidasi ===" << Color::RESET << "\n";
-  std::cout << "Uang kamu saat ini: " << fmtMoney(player.getMoney())
-            << " | Kewajiban: " << fmtMoney(debt) << "\n";
-  printLine();
-
-  const auto &owned = player.getOwnedProperties();
-  if (owned.empty()) {
-    std::cout << "Tidak ada properti yang bisa dilikuidasi.\n";
-    return;
-  }
-
-  int idx = 1;
-
-  std::cout << "[Jual ke Bank]\n";
-  for (const PropertyTile *prop : owned) {
-    if (prop->getStatus() == 2)
-      continue;
-
-    int sellValue = prop->getPrice();
-    const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
-    std::string extra = "";
-    if (st && st->hasBuildings()) {
-      int bldgVal = st->calcBuildingResaleValue();
-      sellValue += bldgVal;
-      extra = " (termasuk bangunan: " + fmtMoney(bldgVal) + ")";
-    }
-    std::cout << "  " << idx++ << ". " << prop->getName() << " ("
-              << prop->getKode() << ") Harga Jual: " << fmtMoney(sellValue)
-              << extra << "\n";
-  }
-
-  std::cout << "[Gadaikan]\n";
-  for (const PropertyTile *prop : owned) {
-    if (prop->getStatus() != 1)
-      continue;
-
-    const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
-    if (st && st->hasBuildings())
-      continue;
-
-    std::cout << "  " << idx++ << ". " << prop->getName() << " ("
-              << prop->getKode()
-              << ") Nilai Gadai: " << fmtMoney(prop->getmortgageValue())
+    std::cout << Color::BOLD << "=== Panel Likuidasi ===" << Color::RESET
               << "\n";
-  }
+    std::cout << "Uang kamu saat ini: " << fmtMoney(player.getMoney())
+              << " | Kewajiban: " << fmtMoney(debt) << "\n";
+    printLine();
 
-  printLine();
-  std::cout << "Pilih aksi (0 jika sudah cukup): ";
+    const auto &owned = player.getOwnedProperties();
+    if (owned.empty()) {
+        std::cout << "Tidak ada properti yang bisa dilikuidasi.\n";
+        return;
+    }
+
+    int idx = 1;
+
+    std::cout << "[Jual ke Bank]\n";
+    for (const PropertyTile *prop : owned) {
+        if (prop->getStatus() == 2)
+            continue;
+
+        int sellValue = prop->getPrice();
+        const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
+        std::string extra = "";
+        if (st && st->hasBuildings()) {
+            int bldgVal = st->calcBuildingResaleValue();
+            sellValue += bldgVal;
+            extra = " (termasuk bangunan: " + fmtMoney(bldgVal) + ")";
+        }
+        std::cout << "  " << idx++ << ". " << prop->getName() << " ("
+                  << prop->getKode() << ") Harga Jual: " << fmtMoney(sellValue)
+                  << extra << "\n";
+    }
+
+    std::cout << "[Gadaikan]\n";
+    for (const PropertyTile *prop : owned) {
+        if (prop->getStatus() != 1)
+            continue;
+
+        const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
+        if (st && st->hasBuildings())
+            continue;
+
+        std::cout << "  " << idx++ << ". " << prop->getName() << " ("
+                  << prop->getKode()
+                  << ") Nilai Gadai: " << fmtMoney(prop->getmortgageValue())
+                  << "\n";
+    }
+
+    printLine();
+    std::cout << "Pilih aksi (0 jika sudah cukup): ";
 }
 
 void Formatter::printBayarSewa(const Player &payer, const Player &owner,
                                const PropertyTile &property, int rentAmount) {
-  if (property.getStatus() == 2) {
+    if (property.getStatus() == 2) {
+
+        std::cout << "Kamu mendarat di " << property.getName() << " ("
+                  << property.getKode() << "), milik " << owner.getUsername()
+                  << ".\n"
+                  << "Properti ini sedang digadaikan [M]. Tidak ada sewa yang "
+                     "dikenakan.\n";
+        return;
+    }
+
+    std::string kondisi = "unimproved";
+    const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
+    if (st && st->hasBuildings()) {
+        int lvl = st->getRentLevel();
+        if (lvl == 5)
+            kondisi = "Hotel";
+        else
+            kondisi = std::to_string(lvl) + " rumah";
+    }
 
     std::cout << "Kamu mendarat di " << property.getName() << " ("
               << property.getKode() << "), milik " << owner.getUsername()
-              << ".\n"
-              << "Properti ini sedang digadaikan [M]. Tidak ada sewa yang "
-                 "dikenakan.\n";
-    return;
-  }
-
-  std::string kondisi = "unimproved";
-  const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
-  if (st && st->hasBuildings()) {
-    int lvl = st->getRentLevel();
-    if (lvl == 5)
-      kondisi = "Hotel";
-    else
-      kondisi = std::to_string(lvl) + " rumah";
-  }
-
-  std::cout << "Kamu mendarat di " << property.getName() << " ("
-            << property.getKode() << "), milik " << owner.getUsername() << "!\n"
-            << "Kondisi : " << kondisi << "\n"
-            << "Sewa    : " << Color::RED << fmtMoney(rentAmount)
-            << Color::RESET << "\n"
-            << "Uang kamu       : " << fmtMoney(payer.getMoney() + rentAmount)
-            << " -> " << fmtMoney(payer.getMoney()) << "\n"
-            << "Uang " << owner.getUsername() << " : "
-            << fmtMoney(owner.getMoney() - rentAmount) << " -> "
-            << fmtMoney(owner.getMoney()) << "\n";
+              << "!\n"
+              << "Kondisi : " << kondisi << "\n"
+              << "Sewa    : " << Color::RED << fmtMoney(rentAmount)
+              << Color::RESET << "\n"
+              << "Uang kamu       : " << fmtMoney(payer.getMoney() + rentAmount)
+              << " -> " << fmtMoney(payer.getMoney()) << "\n"
+              << "Uang " << owner.getUsername() << " : "
+              << fmtMoney(owner.getMoney() - rentAmount) << " -> "
+              << fmtMoney(owner.getMoney()) << "\n";
 }
 
 void Formatter::printBayarPajak(const Player &player, int amount) {
-  std::cout << "Uang kamu: " << fmtMoney(player.getMoney() + amount) << " -> "
-            << Color::RED << fmtMoney(player.getMoney()) << Color::RESET
-            << "\n";
+    std::cout << "Uang kamu: " << fmtMoney(player.getMoney() + amount) << " -> "
+              << Color::RED << fmtMoney(player.getMoney()) << Color::RESET
+              << "\n";
 }
 
 void Formatter::printAuction(const PropertyTile &property,
                              const Player &highestBidder, int highestBid) {
-  std::cout << "\nLelang selesai!\n"
-            << "Pemenang  : " << Color::GREEN << highestBidder.getUsername()
-            << Color::RESET << "\n"
-            << "Harga akhir: " << fmtMoney(highestBid) << "\n"
-            << "Properti " << property.getName() << " (" << property.getKode()
-            << ") kini dimiliki " << highestBidder.getUsername() << ".\n";
+    std::cout << "\nLelang selesai!\n"
+              << "Pemenang  : " << Color::GREEN << highestBidder.getUsername()
+              << Color::RESET << "\n"
+              << "Harga akhir: " << fmtMoney(highestBid) << "\n"
+              << "Properti " << property.getName() << " (" << property.getKode()
+              << ") kini dimiliki " << highestBidder.getUsername() << ".\n";
 }
 
 void Formatter::printFestival(const PropertyTile &property, int oldRent,
                               int newRent, int duration) {
-  const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
-  std::cout << Color::YELLOW << "Efek festival aktif!" << Color::RESET << "\n"
-            << "Properti  : " << property.getName() << " ("
-            << property.getKode() << ")\n"
-            << "Sewa awal  : " << fmtMoney(oldRent) << "\n"
-            << "Sewa sekarang : " << Color::YELLOW << fmtMoney(newRent)
-            << Color::RESET << "\n"
-            << "Durasi    : " << duration << " giliran\n";
+    const StreetTile *st = dynamic_cast<const StreetTile *>(&property);
+    std::cout << Color::YELLOW << "Efek festival aktif!" << Color::RESET << "\n"
+              << "Properti  : " << property.getName() << " ("
+              << property.getKode() << ")\n"
+              << "Sewa awal  : " << fmtMoney(oldRent) << "\n"
+              << "Sewa sekarang : " << Color::YELLOW << fmtMoney(newRent)
+              << Color::RESET << "\n"
+              << "Durasi    : " << duration << " giliran\n";
 }
 
 void Formatter::printHandCards(const Player &player) {
-  std::cout << "Daftar Kartu Kemampuan Spesial " << player.getUsername()
-            << ":\n";
+    std::cout << "Daftar Kartu Kemampuan Spesial " << player.getUsername()
+              << ":\n";
 
-  const auto &cards = player.getHandCards();
-  if (cards.empty()) {
-    std::cout << "  (tidak ada kartu)\n";
-    return;
-  }
+    const auto &cards = player.getHandCards();
+    if (cards.empty()) {
+        std::cout << "  (tidak ada kartu)\n";
+        return;
+    }
 
-  for (int i = 0; i < (int)cards.size(); i++) {
-    const SkillCard *card = cards[i];
-    std::cout << "  " << (i + 1) << ". " << Color::CYAN << card->getCardName()
-              << Color::RESET << " - " << card->getCardDescription();
-    std::string val = card->getValueString();
-    if (!val.empty())
-      std::cout << " [" << val << "]";
-    std::cout << "\n";
-  }
-  std::cout << "  0. Batal\n";
+    for (int i = 0; i < (int)cards.size(); i++) {
+        const SkillCard *card = cards[i];
+        std::cout << "  " << (i + 1) << ". " << Color::CYAN
+                  << card->getCardName() << Color::RESET << " - "
+                  << card->getCardDescription();
+        std::string val = card->getValueString();
+        if (!val.empty())
+            std::cout << " [" << val << "]";
+        std::cout << "\n";
+    }
+    std::cout << "  0. Batal\n";
 }
 
 void Formatter::printWinner(const std::vector<Player> &players,
                             bool isBankruptcy) {
-  printDoubleLine(52);
-
-  if (isBankruptcy) {
-    std::cout << Color::BOLD
-              << "Permainan selesai! (Semua pemain kecuali satu bangkrut)"
-              << Color::RESET << "\n";
     printDoubleLine(52);
 
-    for (const Player &p : players) {
-      if (p.getStatus() == PlayerStatus::ACTIVE) {
-        std::cout << "Pemain tersisa:\n  - " << p.getUsername() << "\n";
-        std::cout << Color::BOLD << Color::GREEN
-                  << "Pemenang: " << p.getUsername() << Color::RESET << "\n";
-        break;
-      }
-    }
-  } else {
-    std::cout << Color::BOLD << "Permainan selesai! (Batas giliran tercapai)"
-              << Color::RESET << "\n";
-    printDoubleLine(52);
+    if (isBankruptcy) {
+        std::cout << Color::BOLD
+                  << "Permainan selesai! (Semua pemain kecuali satu bangkrut)"
+                  << Color::RESET << "\n";
+        printDoubleLine(52);
 
-    std::cout << "Rekap pemain:\n";
-    for (const Player &p : players) {
-      if (p.getStatus() == PlayerStatus::BANKRUPT)
-        continue;
-      std::cout << p.getUsername() << "\n"
-                << "  Uang     : " << fmtMoney(p.getMoney()) << "\n"
-                << "  Properti : " << p.getOwnedProperties().size() << "\n"
-                << "  Kartu    : " << p.getHandCards().size() << "\n";
-    }
-    printLine('-', 52);
+        for (const Player &p : players) {
+            if (p.getStatus() == PlayerStatus::ACTIVE) {
+                std::cout << "Pemain tersisa:\n  - " << p.getUsername() << "\n";
+                std::cout << Color::BOLD << Color::GREEN
+                          << "Pemenang: " << p.getUsername() << Color::RESET
+                          << "\n";
+                break;
+            }
+        }
+    } else {
+        std::cout << Color::BOLD
+                  << "Permainan selesai! (Batas giliran tercapai)"
+                  << Color::RESET << "\n";
+        printDoubleLine(52);
 
-    std::vector<const Player *> candidates;
-    for (const Player &p : players)
-      if (p.getStatus() != PlayerStatus::BANKRUPT)
-        candidates.push_back(&p);
+        std::cout << "Rekap pemain:\n";
+        for (const Player &p : players) {
+            if (p.getStatus() == PlayerStatus::BANKRUPT)
+                continue;
+            std::cout << p.getUsername() << "\n"
+                      << "  Uang     : " << fmtMoney(p.getMoney()) << "\n"
+                      << "  Properti : " << p.getOwnedProperties().size()
+                      << "\n"
+                      << "  Kartu    : " << p.getHandCards().size() << "\n";
+        }
+        printLine('-', 52);
 
-    std::sort(candidates.begin(), candidates.end(),
-              [](const Player *a, const Player *b) {
-                if (a->getMoney() != b->getMoney())
-                  return a->getMoney() > b->getMoney();
-                if (a->getOwnedProperties().size() !=
-                    b->getOwnedProperties().size())
-                  return a->getOwnedProperties().size() >
-                         b->getOwnedProperties().size();
-                return a->getHandCards().size() > b->getHandCards().size();
-              });
+        std::vector<const Player *> candidates;
+        for (const Player &p : players)
+            if (p.getStatus() != PlayerStatus::BANKRUPT)
+                candidates.push_back(&p);
 
-    std::vector<const Player *> winners;
-    if (!candidates.empty()) {
-      winners.push_back(candidates[0]);
-      for (int i = 1; i < (int)candidates.size(); i++) {
-        bool seri = (candidates[i]->getMoney() == candidates[0]->getMoney() &&
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Player *a, const Player *b) {
+                      if (a->getMoney() != b->getMoney())
+                          return a->getMoney() > b->getMoney();
+                      if (a->getOwnedProperties().size() !=
+                          b->getOwnedProperties().size())
+                          return a->getOwnedProperties().size() >
+                                 b->getOwnedProperties().size();
+                      return a->getHandCards().size() >
+                             b->getHandCards().size();
+                  });
+
+        std::vector<const Player *> winners;
+        if (!candidates.empty()) {
+            winners.push_back(candidates[0]);
+            for (int i = 1; i < (int)candidates.size(); i++) {
+                bool seri =
+                    (candidates[i]->getMoney() == candidates[0]->getMoney() &&
                      candidates[i]->getOwnedProperties().size() ==
                          candidates[0]->getOwnedProperties().size() &&
                      candidates[i]->getHandCards().size() ==
                          candidates[0]->getHandCards().size());
-        if (seri)
-          winners.push_back(candidates[i]);
-        else
-          break;
-      }
+                if (seri)
+                    winners.push_back(candidates[i]);
+                else
+                    break;
+            }
+        }
+
+        if (winners.size() == 1) {
+            std::cout << Color::BOLD << Color::GREEN
+                      << "Pemenang: " << winners[0]->getUsername()
+                      << Color::RESET << "\n";
+        } else {
+            std::cout << Color::BOLD << Color::YELLOW
+                      << "Seri! Pemenang bersama:" << Color::RESET << "\n";
+            for (const Player *w : winners)
+                std::cout << "  - " << w->getUsername() << "\n";
+        }
     }
 
-    if (winners.size() == 1) {
-      std::cout << Color::BOLD << Color::GREEN
-                << "Pemenang: " << winners[0]->getUsername() << Color::RESET
-                << "\n";
-    } else {
-      std::cout << Color::BOLD << Color::YELLOW
-                << "Seri! Pemenang bersama:" << Color::RESET << "\n";
-      for (const Player *w : winners)
-        std::cout << "  - " << w->getUsername() << "\n";
-    }
-  }
-
-  printDoubleLine(52);
+    printDoubleLine(52);
 }
 
 void Formatter::printBankrupt(const Player &player,
                               const std::string &creditor) {
-  std::cout << Color::BOLD << Color::RED << player.getUsername()
-            << " dinyatakan BANGKRUT!" << Color::RESET << "\n"
-            << "Kreditor: " << creditor << "\n";
+    std::cout << Color::BOLD << Color::RED << player.getUsername()
+              << " dinyatakan BANGKRUT!" << Color::RESET << "\n"
+              << "Kreditor: " << creditor << "\n";
 
-  if (creditor == "Bank") {
-    std::cout << "Uang sisa " << fmtMoney(player.getMoney())
-              << " diserahkan ke Bank.\n"
-              << "Seluruh properti dikembalikan ke status BANK.\n"
-              << "Bangunan dihancurkan — stok dikembalikan ke Bank.\n"
-              << "Properti akan dilelang satu per satu:\n";
-    for (const PropertyTile *prop : player.getOwnedProperties()) {
-      std::cout << "  -> Lelang: " << prop->getName() << " (" << prop->getKode()
-                << ") ...\n";
+    if (creditor == "Bank") {
+        std::cout << "Uang sisa " << fmtMoney(player.getMoney())
+                  << " diserahkan ke Bank.\n"
+                  << "Seluruh properti dikembalikan ke status BANK.\n"
+                  << "Bangunan dihancurkan — stok dikembalikan ke Bank.\n"
+                  << "Properti akan dilelang satu per satu:\n";
+        for (const PropertyTile *prop : player.getOwnedProperties()) {
+            std::cout << "  -> Lelang: " << prop->getName() << " ("
+                      << prop->getKode() << ") ...\n";
+        }
+    } else {
+
+        std::cout << "Pengalihan aset ke " << creditor << ":\n"
+                  << "  - Uang tunai sisa : " << fmtMoney(player.getMoney())
+                  << "\n";
+        for (const PropertyTile *prop : player.getOwnedProperties()) {
+            std::string statusStr =
+                prop->getStatus() == 2 ? " MORTGAGED [M]" : " OWNED";
+            const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
+            std::string bldg = "";
+            if (st && st->hasBuildings()) {
+                int lvl = st->getRentLevel();
+                bldg = lvl == 5 ? " (Hotel)"
+                                : " (" + std::to_string(lvl) + " rumah)";
+            }
+            std::cout << "  - " << prop->getName() << " (" << prop->getKode()
+                      << ")" << bldg << statusStr << "\n";
+        }
+        std::cout << creditor << " menerima semua aset " << player.getUsername()
+                  << ".\n";
     }
-  } else {
 
-    std::cout << "Pengalihan aset ke " << creditor << ":\n"
-              << "  - Uang tunai sisa : " << fmtMoney(player.getMoney())
-              << "\n";
-    for (const PropertyTile *prop : player.getOwnedProperties()) {
-      std::string statusStr =
-          prop->getStatus() == 2 ? " MORTGAGED [M]" : " OWNED";
-      const StreetTile *st = dynamic_cast<const StreetTile *>(prop);
-      std::string bldg = "";
-      if (st && st->hasBuildings()) {
-        int lvl = st->getRentLevel();
-        bldg = lvl == 5 ? " (Hotel)" : " (" + std::to_string(lvl) + " rumah)";
-      }
-      std::cout << "  - " << prop->getName() << " (" << prop->getKode() << ")"
-                << bldg << statusStr << "\n";
-    }
-    std::cout << creditor << " menerima semua aset " << player.getUsername()
-              << ".\n";
-  }
-
-  std::cout << player.getUsername() << " telah keluar dari permainan.\n";
+    std::cout << player.getUsername() << " telah keluar dari permainan.\n";
 }

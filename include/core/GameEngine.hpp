@@ -1,9 +1,10 @@
 #ifndef GAME_ENGINE_HPP
 #define GAME_ENGINE_HPP
 
-#include <random>
 #include <string>
 #include <vector>
+
+#include "../../include/core/Enums.hpp"
 
 // Forward Declarations - Hindari include di header untuk mencegah circular
 // dependency

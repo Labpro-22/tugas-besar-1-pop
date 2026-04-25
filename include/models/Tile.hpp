@@ -1,8 +1,10 @@
 #pragma once
 #include "../core/Player.hpp"
+#include <map>
 #include <string>
+#include <vector>
+
 using namespace std;
-#include <bits/stdc++.h>
 
 class Tile {
   protected:

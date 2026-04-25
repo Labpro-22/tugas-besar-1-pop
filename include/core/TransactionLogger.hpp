@@ -1,13 +1,13 @@
 #pragma once
 
+#include "Enums.hpp"
 #include <string>
 #include <vector>
-#include "Enums.hpp"
 
 using namespace std;
 
 class LogEntry {
-public:
+  public:
     int turn;
     string username;
     LogActionType actionType;
@@ -15,14 +15,15 @@ public:
 };
 
 class TransactionLogger {
-private:
+  private:
     vector<LogEntry> logs;
 
-public:
+  public:
     TransactionLogger();
-    void logEvent(int turn, const string& username, LogActionType actionType, const string& detail);
+    void logEvent(int turn, const string &username, LogActionType actionType,
+                  const string &detail);
     vector<LogEntry> getLogs(int limit = -1) const;
     void clearLogs();
     string serialize() const;
-    void deserialize(const string& data);
+    void deserialize(const string &data);
 };

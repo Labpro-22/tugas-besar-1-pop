@@ -95,6 +95,8 @@ static Color tint(Color c, int d) {
 
 struct AssetCache {
   std::unordered_map<std::string, Texture2D> tex;
+  Music bgMusic = {};
+  bool musicLoaded = false;
   bool loaded = false;
 
   Texture2D *get(const std::string &key) {
@@ -136,6 +138,13 @@ struct AssetCache {
     loadPng("cmd_cetak_properti", "assets/CetakProperti.png");
     loadPng("cmd_akhiri", "assets/AkhiriGiliran.png");
     loaded = true;
+
+    if (!musicLoaded && FileExists("assets/bgm.wav")) {
+      bgMusic = LoadMusicStream("assets/bgm.wav");
+      bgMusic.looping = true;
+      PlayMusicStream(bgMusic);
+      musicLoaded = true;
+    }
   }
 
   void unloadAll() {
@@ -143,6 +152,16 @@ struct AssetCache {
       UnloadTexture(kv.second);
     tex.clear();
     loaded = false;
+    if (musicLoaded) {
+      StopMusicStream(bgMusic);
+      UnloadMusicStream(bgMusic);
+      musicLoaded = false;
+    }
+  }
+
+  void updateMusic() {
+    if (musicLoaded)
+      UpdateMusicStream(bgMusic);
   }
 };
 static AssetCache gAssets;
@@ -224,11 +243,13 @@ GameWindow::GameWindow(int width, int height, const std::string &title)
   sidebarRect = {(float)SIDE_X, (float)SIDE_Y, (float)SIDE_W, (float)SIDE_H};
   cmdBarRect = {(float)CMD_X, (float)CMD_Y, (float)CMD_W, (float)CMD_H};
   InitWindow(width, height, title.c_str());
+  InitAudioDevice();
   SetTargetFPS(60);
 }
 
 GameWindow::~GameWindow() {
   gAssets.unloadAll();
+  CloseAudioDevice();
   CloseWindow();
 }
 
@@ -284,6 +305,8 @@ void GameWindow::setTextInputError(const std::string &msg) {
 }
 
 void GameWindow::tick() {
+  gAssets.updateMusic();
+
   BeginDrawing();
   ClearBackground(C_BG);
 

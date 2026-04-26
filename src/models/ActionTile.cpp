@@ -11,12 +11,11 @@ EffectType ActionTile::onLanded(Player &player) {
 }
 
 int ActionTile::calcRent(int diceRoll) const {
-    // ActionTile tidak memiliki harga sewa
+    (void)diceRoll;
     return 0;
 }
 
 int ActionTile::getOwnerId() const {
-    // ActionTile tidak dimiliki siapapun
     return -1;
 }
 
@@ -27,9 +26,10 @@ CardTile::CardTile(int index, const std::string &code, const std::string &name,
     : ActionTile(index, code, name), cardType(type) {}
 
 EffectType CardTile::triggerEffect(Player &player) {
-    if (cardType == "1") {
+    (void)player;
+    if (cardType == "CHANCE") {
         return EffectType::DRAW_CHANCE;
-    } else if (cardType == "2") {
+    } else if (cardType == "COMMUNITY_CHEST") {
         return EffectType::DRAW_COMMUNITY;
     }
     return EffectType::NONE;
@@ -38,11 +38,11 @@ EffectType CardTile::triggerEffect(Player &player) {
 std::string CardTile::getCardType() const { return this->cardType; }
 
 void CardTile::applyChanceCard(Player &player) {
-    // TODO : Implementasi apabila player mengambil kartu kesempatan
+    (void)player; // TODO : Implementasi apabila player mengambil kartu kesempatan
 }
 
 void CardTile::applyCommunityCard(Player &player) {
-    // TODO : Implementasi apabila player mengambil kartu komunitas
+    (void)player; // TODO : Implementasi apabila player mengambil kartu komunitas
 }
 
 // TaxTile
@@ -53,6 +53,7 @@ TaxTile::TaxTile(int index, const std::string &code, const std::string &name,
       percentageRate(percentageRate) {}
 
 EffectType TaxTile::triggerEffect(Player &player) {
+    (void)player;
     if (taxType == "PPH") {
         return EffectType::PAY_TAX_CHOICE;
     } else if (taxType == "PBM") {
@@ -62,6 +63,7 @@ EffectType TaxTile::triggerEffect(Player &player) {
 }
 
 void TaxTile::handlePPH(Player &player) {
+    (void)player;
     int pilihan = 0;
     if (pilihan == 1) {
         // membayar sejumlah flat
@@ -99,6 +101,7 @@ FestivalTile::FestivalTile(int index, const std::string &code,
     : ActionTile(index, code, name) {}
 
 EffectType FestivalTile::triggerEffect(Player &player) {
+    (void)player;
     return EffectType::FESTIVAL_TRIGGER;
 }
 
@@ -118,7 +121,6 @@ void FestivalTile::applyFestivalToProperty(Player &player) {
 
     if (!choose)
         return;
-    // TODO : Efek festival pada StreetTile
 }
 
 // SpecialTile
@@ -134,13 +136,12 @@ GoTile::GoTile(int index, const std::string &code, const std::string &name,
     : SpecialTile(index, code, name), salary(salary) {}
 
 EffectType GoTile::handleArrival(Player &player) {
-    // Pengurangan/Penambahan saldo akan dieksekusi di GameEngine
-    // setelah menerima EffectType::AWARD_SALARY
+    (void)player;
     return EffectType::AWARD_SALARY;
 }
 
 void GoTile::awardSalary(Player &player) const {
-    // GameEngine nambahin salary
+    (void)player;
 }
 
 int GoTile::getSalary() const { return salary; }
@@ -154,24 +155,19 @@ JailTile::JailTile(int index, const std::string &code, const std::string &name,
 int JailTile::getFine() const { return fine; }
 
 EffectType JailTile::handleArrival(Player &player) {
-    // Jika fungsi ini dipanggil, artinya pemain mendarat ke sini via lemparan
-    // dadu biasa (berjalan). Logika ketika pemain sedang "dipenjara" (JAILED)
-    // dan masuk turn-nya TIDAK dipanggil dari onLanded(), melainkan dicek oleh
-    // GameEngine di awal turn sebelum dadu dilempar.
+    (void)player;
     return EffectType::JUST_VISITING;
 }
 
 void JailTile::imprisonPlayer(Player &player) {
     player.goToJail();
-    // Pindahkan posisi pemain ke petak penjara (index 11 sesuai papan)
     int steps = abs(11 - player.getPosition());
     player.move(steps);
-
-    // Harusnya gameEngine juga
 }
 
 void JailTile::releasePlayer(Player &player) {
-    // TODO : ubah status dari Jailed ke Active (oleh GameEngine)
+    player.setStatus(PlayerStatus::ACTIVE);
+    player.setJailTurnsLeft(0);
 }
 
 EffectType JailTile::processTurnInJail(Player &player) {
@@ -182,8 +178,6 @@ EffectType JailTile::processTurnInJail(Player &player) {
         return handlePayFine(player);
     }
 
-    // TODO: opsi 3 - gunakan kartu Bebas dari Penjara (jika punya)
-    // cout << "Pilihan (1/2): ";
     int pilihan = 0;
     cin >> pilihan;
 
@@ -193,37 +187,29 @@ EffectType JailTile::processTurnInJail(Player &player) {
         return handleRollForDouble(player);
     } else {
         player.decrementJailTurn();
-        return EffectType::JAIL_TURN; // Tetap di jail, tunggu turn berikutnya
+        return EffectType::JAIL_TURN;
     }
 }
 
 EffectType JailTile::handlePayFine(Player &player) {
     if (player.getMoney() >= fine) {
-        // player -= fine;  TODO: GameEngine
         releasePlayer(player);
-        // TODO: GameLogic melanjutkan lemparan dadu normal untuk giliran ini
-        return EffectType::JAIL_PAID_FINE; // Pemain berhasil bayar dan bebas
+        return EffectType::JAIL_PAID_FINE;
     } else {
-        // TODO: GameLogic::handleBankruptcy(player, -1)
-        return EffectType::JAIL_FORCED_BANKRUPTCY; // Pemain tidak punya uang
+        return EffectType::JAIL_FORCED_BANKRUPTCY;
     }
 }
 
 EffectType JailTile::handleRollForDouble(Player &player) {
-    // TODO: GameLogic melempar dadu dan mengecek apakah double
-    // Jika double: releasePlayer() lalu gerakkan pemain
-    // Jika tidak double: player tidak bergerak, increment jailTurns
-    // Simulasi sementara, entar digantikan GameLogic
     int d1 = rand() % 6 + 1;
     int d2 = rand() % 6 + 1;
 
     if (d1 == d2) {
         releasePlayer(player);
-        // TODO: GameLogic
-        return EffectType::JAIL_ROLLED_DOUBLE; // Pemain roll double dan bebas
+        return EffectType::JAIL_ROLLED_DOUBLE;
     } else {
         player.decrementJailTurn();
-        return EffectType::JAIL_ROLLED_NO_DOUBLE; // Tetap di jail
+        return EffectType::JAIL_ROLLED_NO_DOUBLE;
     }
 }
 
@@ -234,6 +220,7 @@ FreeParkingTile::FreeParkingTile(int index, const std::string &code,
     : SpecialTile(index, code, name) {}
 
 EffectType FreeParkingTile::handleArrival(Player &player) {
+    (void)player;
     return EffectType::NONE;
 }
 
@@ -246,5 +233,6 @@ GoToJailTile::GoToJailTile(int index, const std::string &code,
 void GoToJailTile::setJailTile(JailTile *jail) { jailRef = jail; }
 
 EffectType GoToJailTile::handleArrival(Player &player) {
+    (void)player;
     return EffectType::SEND_TO_JAIL;
 }

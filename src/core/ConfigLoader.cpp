@@ -261,12 +261,12 @@ void ConfigLoader::linkSpecialTiles() {
         if (tile == nullptr)
             continue;
 
-        if (jailTile == nullptr) {
-            jailTile = dynamic_cast<JailTile *>(tile);
-        }
-        if (goToJailTile == nullptr) {
-            goToJailTile = dynamic_cast<GoToJailTile *>(tile);
-        }
+        if (jailTile == nullptr && tile->isJailTile())
+            jailTile = static_cast<JailTile *>(tile);
+
+        if (goToJailTile == nullptr && tile->isGoToJailTile())
+            goToJailTile = static_cast<GoToJailTile *>(tile);
+
         if (jailTile != nullptr && goToJailTile != nullptr)
             break;
     }

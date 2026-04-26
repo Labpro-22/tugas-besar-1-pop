@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+// ---- Data structs passed from controller to window ----
+
 struct CardInfo {
     std::string name;
     std::string description;
@@ -20,6 +22,8 @@ struct PlayerInfo {
     std::string status;
     int jailTurnsLeft;
     bool shieldActive;
+    bool hasUsedCardThisTurn;
+    bool isCom;
     std::vector<CardInfo> handCards;
     Color color;
 };
@@ -63,7 +67,12 @@ struct GameState {
     DiceInfo dice;
     bool gameOver;
     std::string winnerName;
+    std::string currentPhase;  // "AWAITING_ACTION", "POST_ROLL", "EFFECT_PENDING", etc.
+    bool isComTurn;
+    bool canBuyCurrentTile = false;
 };
+
+// ---- Popup system ----
 
 enum class PopupType {
     NONE,
@@ -82,10 +91,44 @@ struct PopupState {
     PopupType type = PopupType::NONE;
     std::string title;
     std::string message;
-
     std::vector<std::string> options;
     int selectedIndex = -1;
 };
+
+// ---- App screens ----
+
+enum class AppScreen {
+    MAIN_MENU,
+    PLAYER_SETUP,
+    PLAYING,
+};
+
+// ---- Internal UI state ----
+
+struct MenuState {
+    int numPlayers = 2;
+    std::vector<std::string> playerNames = {"", "", "", ""};
+    std::vector<int> playerTypes = {0, 0, 0, 0}; // 0=manusia, 1=bot easy, 2=bot hard
+    int activeField = 0;
+};
+
+struct TextInputState {
+    bool active = false;
+    bool isSave = true; // true=save, false=load
+    std::string buffer;
+    std::string title;
+    std::string hint;
+    std::string errorMsg;
+};
+
+struct PropertyInfoState {
+    bool active = false;
+    bool justOpened = false;
+    std::string title;
+    std::vector<std::string> lines;
+};
+
+// ---- GameWindow class ----
 
 class GameWindow {
   public:
@@ -97,16 +140,32 @@ class GameWindow {
     void updateState(const GameState &state);
 
     void showPopup(const PopupState &popup);
-
     void closePopup();
 
     bool isRunning() const;
-
     void tick();
 
+    // Command callbacks (game actions)
     void onCommand(const std::string &name, std::function<void()> callback);
-
     void onPopupOption(std::function<void(int index)> callback);
+
+    // Screen management
+    void setScreen(AppScreen screen);
+    AppScreen getScreen() const;
+
+    // Menu/setup callbacks
+    void onNewGame(std::function<void(int, std::vector<std::string>)> cb);
+    void onLoadGame(std::function<void(std::string)> cb);
+    void onSaveGame(std::function<void(std::string)> cb);
+    void onExitGame(std::function<void()> cb);
+
+    // GUI dialogs
+    void showTextInput(const std::string &title, const std::string &hint,
+                       bool isSave);
+    void showPropertyInfo(const std::string &title,
+                          const std::vector<std::string> &lines);
+    void closePropertyInfo();
+    void setTextInputError(const std::string &msg);
 
   private:
     int screenW, screenH;
@@ -117,9 +176,20 @@ class GameWindow {
     GameState state;
     PopupState popup;
 
+    AppScreen currentScreen = AppScreen::MAIN_MENU;
+    MenuState menuState;
+    TextInputState textInput;
+    PropertyInfoState propInfo;
+    bool exitRequested = false;
+
     std::map<std::string, std::function<void()>> commandCallbacks;
     std::function<void(int)> popupCallback;
+    std::function<void(int, std::vector<std::string>)> newGameCallback;
+    std::function<void(std::string)> loadGameCallback;
+    std::function<void(std::string)> saveGameCallback;
+    std::function<void()> exitGameCallback;
 
+    // Draw methods - game
     void drawBoard();
     void drawTile(const TileInfo &tile, Rectangle rect);
     void drawPlayerPawns();
@@ -130,6 +200,16 @@ class GameWindow {
     void drawCommandBar();
     void drawPopup();
 
+    // Draw methods - screens
+    void drawMainMenu();
+    void drawPlayerSetup();
+    void drawTextInputOverlay();
+    void drawPropertyInfoOverlay();
+
+    // Input helper
+    void handleKeyboardTextInput(std::string &buffer, int maxLen = 24);
+
+    // Utilities
     Color getTileColor(const std::string &colorGroup) const;
     Color getPlayerColor(int playerIndex) const;
     Rectangle getTileRect(int tileIndex) const;

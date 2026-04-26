@@ -123,22 +123,18 @@ void SaveLoadManager::saveProperties(std::ofstream &file,
         int fmult = 1;
         int fdur = 0;
 
-        const StreetTile *street = dynamic_cast<const StreetTile *>(prop);
-        const RailroadTile *rr = dynamic_cast<const RailroadTile *>(prop);
-        const UtilityTile *util = dynamic_cast<const UtilityTile *>(prop);
-
-        if (street) {
+        if (prop->isStreet()) {
             jenis = "street";
-            fmult = street->getFestivalMultiplier();
-            fdur = street->getFestivalDuration();
-            if (street->hasHotel()) {
+            fmult = prop->getFestivalMultiplier();
+            fdur  = prop->getFestivalDuration();
+            if (prop->hasHotel()) {
                 nBangunan = "H";
             } else {
-                nBangunan = std::to_string(street->getHouseCount());
+                nBangunan = std::to_string(prop->getHouseCount());
             }
-        } else if (rr) {
+        } else if (prop->isRailroad()) {
             jenis = "railroad";
-        } else if (util) {
+        } else if (prop->isUtility()) {
             jenis = "utility";
         } else {
             jenis = "unknown";
@@ -287,12 +283,10 @@ bool SaveLoadManager::loadProperties(std::ifstream &file, GameEngine &engine) {
             return false;
 
         Tile *tile = board->getTileByKode(kode);
-        if (!tile)
+        if (!tile || !tile->isProperty())
             continue;
 
-        PropertyTile *prop = dynamic_cast<PropertyTile *>(tile);
-        if (!prop)
-            continue;
+        PropertyTile *prop = static_cast<PropertyTile *>(tile);
 
         PropertyStatus status;
         if (statusStr == "BANK")
@@ -313,8 +307,8 @@ bool SaveLoadManager::loadProperties(std::ifstream &file, GameEngine &engine) {
             prop->setOwner(nullptr);
         }
 
-        StreetTile *street = dynamic_cast<StreetTile *>(prop);
-        if (street) {
+        if (tile->isStreet()) {
+            StreetTile *street = static_cast<StreetTile *>(tile);
             street->setFestivalMultiplier(fmult);
             street->setFestivalDuration(fdur);
 

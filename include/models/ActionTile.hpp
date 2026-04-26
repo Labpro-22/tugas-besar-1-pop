@@ -29,6 +29,10 @@ class CardTile : public ActionTile {
 
     std::string getCardType() const;
 
+    // --- Type-query override ---
+    bool isCardTile() const override { return true; }
+    std::string getTileCategory() const override { return "CARD"; }
+
   private:
     std::string cardType; // 1 : Kartu Kesempatan dan 2 : Dana Umum
 
@@ -60,6 +64,10 @@ class TaxTile : public ActionTile {
     // hitung total kekayaan
     int computeNetWorth(const Player &player) const;
 
+    // --- Type-query override ---
+    bool isTaxTile() const override { return true; }
+    std::string getTileCategory() const override { return "TAX"; }
+
   private:
     std::string taxType;
     int flatAmount;
@@ -72,6 +80,10 @@ class FestivalTile : public ActionTile {
 
     EffectType triggerEffect(Player &player) override;
     void applyFestivalToProperty(Player &player);
+
+    // --- Type-query override ---
+    bool isFestivalTile() const override { return true; }
+    std::string getTileCategory() const override { return "FESTIVAL"; }
 };
 
 class SpecialTile : public ActionTile {
@@ -97,6 +109,8 @@ class GoTile : public SpecialTile {
     void awardSalary(Player &player) const;
     int getSalary() const;
 
+    bool isGoTile() const override { return true; }
+
   private:
     int salary;
 };
@@ -119,6 +133,8 @@ class JailTile : public SpecialTile {
     EffectType handlePayFine(Player &player);
     EffectType handleRollForDouble(Player &player);
 
+    bool isJailTile() const override { return true; }
+
   private:
     int fine;
 };
@@ -137,6 +153,8 @@ class GoToJailTile : public SpecialTile {
 
     // Dipanggil Board setelah semua tile diinisialisasi
     void setJailTile(JailTile *jail);
+
+    bool isGoToJailTile() const override { return true; }
 
   private:
     JailTile *jailRef = nullptr; // supaya bisa memasukkan pemain ke penjara

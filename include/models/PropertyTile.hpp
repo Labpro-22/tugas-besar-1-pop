@@ -1,15 +1,17 @@
 #ifndef PROPERTY_TILE_HPP
 #define PROPERTY_TILE_HPP
 
+#include "../core/Enums.hpp"
 #include "../models/Tile.hpp"
 #include <string>
 
 class PropertyTile : public Tile {
   protected:
-    int mortgageValue;
     int price;
+    int mortgageValue;
     int ownerId; // -1 jika milik Bank
     int status;  // 0: BANK, 1: OWNED, 2: MORTGAGED
+    Player *ownerPtr = nullptr; // pointer ke owner (untuk SaveLoadManager)
 
   public:
     PropertyTile(int index, const std::string &code, const std::string &name,
@@ -30,6 +32,19 @@ class PropertyTile : public Tile {
     void setOwnerId(int id) { ownerId = id; }
     void setStatus(int s) { status = s; }
     virtual void sellTobank(Player &owner);
+
+    // --- API untuk SaveLoadManager (PropertyStatus enum wrapper) ---
+    PropertyStatus getPropertyStatus() const;
+    void setPropertyStatus(PropertyStatus ps);
+    const Player *getOwner() const { return ownerPtr; }
+    void setOwner(Player *p) { ownerPtr = p; if (p) ownerId = p->getId(); else ownerId = -1; }
+
+    bool isProperty() const override { return true; }
+    std::string getTileCategory() const override { return "PROPERTY"; }
+
+    // Virtual stubs untuk festival info (override di StreetTile)
+    virtual int getFestivalMultiplier() const { return 1; }
+    virtual int getFestivalDuration()   const { return 0; }
 };
 
 class StreetTile : public PropertyTile {
@@ -51,30 +66,43 @@ class StreetTile : public PropertyTile {
     void buildHouse();
     void buildHotel();
     void demolish() override;
-    bool hasBuildings() const;
-    int getHouseCost() const;
-    int getHotelCost() const;
+    void removeOneBuilding(); // Kurangi 1 level bangunan (untuk DemolitionCard)
+    
+    int getHouseCost() const override;
+    int getHotelCost() const override;
     int getRentLevel() const override;
 
+    // --- Type-query overrides ---
     bool isStreet() const override { return true; }
-    // Color group
-    string getColorGroup() const override;
+    std::string getTileCategory() const override { return "STREET"; }
+    std::string getColorGroup() const override;
 
-    /** Hitung nilai jual bangunan saat ini (50% dari total harga beli bangunan)
-     */
-    int calcBuildingResaleValue() const;
+    // --- Building-info overrides (menggantikan dynamic_cast ke StreetTile) ---
+    bool hasBuildings()            const override;
+    int  getHouseCount()           const override;
+    bool hasHotel()                const override;
+    int  calcBuildingResaleValue() const override;
+
     void setMonopolized(bool val);
 
     // efek festival
     void setFestivalEffect(int multiplier);
     void clearFestivalEffect();
+    int  getFestivalMultiplier() const override;  // untuk SaveLoadManager
+    int  getFestivalDuration()   const override;  // untuk SaveLoadManager
+    void setFestivalMultiplier(int m);   // untuk SaveLoadManager
+    void setFestivalDuration(int d);     // untuk SaveLoadManager
+
+    // setter untuk building state (untuk SaveLoadManager)
+    void setHotel(bool val);
+    void setHouseCount(int count);
 
   private:
     std::string colorGroup;
     std::vector<int> rentTable; // Indeks sesuai RentLevel
     int houseCost;
-    int rentLevel;
     int hotelCost;
+    int rentLevel;
     int festivalEffectMultiplier = 1;
     bool isMonopolized = false;
     bool isFestivalEffectActive = false;
@@ -91,6 +119,10 @@ class RailroadTile : public PropertyTile {
     EffectType onLanded(Player &player) override;
     int getRailroadOwnedCount() const;
     void setrailroadOwnedCount(int count);
+
+    // --- Type-query overrides ---
+    bool isRailroad() const override { return true; }
+    std::string getTileCategory() const override { return "RAILROAD"; }
 
   private:
     map<int, int> rentByCount; // jumlah railroad -> sewa
@@ -114,6 +146,10 @@ class UtilityTile : public PropertyTile {
     void setLastDiceRoll(int dice);
     int getUtilityOwnedCount() const;
     int getLastDiceRoll() const;
+
+    // --- Type-query overrides ---
+    bool isUtility() const override { return true; }
+    std::string getTileCategory() const override { return "UTILITY"; }
 
   private:
     std::map<int, int> multiplierByCount; // jumlah utility -> faktor pengali

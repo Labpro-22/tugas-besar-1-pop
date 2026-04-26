@@ -4,8 +4,6 @@
 #include <sstream>
 #include <unordered_map>
 
-static const int SCREEN_W = 1280;
-static const int SCREEN_H = 800;
 static const int BOARD_X = 16;
 static const int BOARD_Y = 16;
 static const int BOARD_W = 820;
@@ -458,7 +456,7 @@ void GameWindow::drawMainMenu() {
                 (int)(cx + 20), (int)(cy + ch - 26), 8, C_TEXT_DIM);
 }
 
-// ---- PLAYER SETUP SCREEN ----
+// PLAYER SETUP
 
 void GameWindow::drawPlayerSetup() {
   DrawRectangle(0, 0, screenW, screenH, C_BOARD_FELT);
@@ -557,7 +555,7 @@ void GameWindow::drawPlayerSetup() {
         menuState.activeField = -1;
     }
 
-    // Text input (manusia saja)
+    // Text input
     float inputW = cw - 90 - toggleW - 14;
     Rectangle inputRect = {cx + 54, fy + 22, inputW, 34};
     if (isHuman) {
@@ -605,7 +603,7 @@ void GameWindow::drawPlayerSetup() {
       break;
     }
 
-  // Cek nama duplikat (hanya antar nama efektif)
+  // Cek nama duplikat
   auto enames = effectiveNames();
   bool hasDuplicate = false;
   for (int i = 0; i < menuState.numPlayers && !hasDuplicate; i++)
@@ -621,8 +619,8 @@ void GameWindow::drawPlayerSetup() {
     }
 
   if (!allFilled) {
-    drawPixelText("Isi semua nama pemain untuk memulai.",
-                  (int)(cx + 30), (int)(cy + ch - 96), 9, C_WARN);
+    drawPixelText("Isi semua nama pemain untuk memulai.", (int)(cx + 30),
+                  (int)(cy + ch - 96), 9, C_WARN);
   } else if (hasDuplicate) {
     drawPixelText("Nama pemain tidak boleh sama!", (int)(cx + 30),
                   (int)(cy + ch - 96), 9, C_DANGER);
@@ -673,8 +671,6 @@ void GameWindow::drawPlayerSetup() {
     menuState.activeField = 0;
   }
 }
-
-// ---- TEXT INPUT OVERLAY ----
 
 void GameWindow::drawTextInputOverlay() {
   if (!textInput.active)
@@ -775,8 +771,6 @@ void GameWindow::drawTextInputOverlay() {
   }
 }
 
-// ---- PROPERTY INFO OVERLAY ----
-
 void GameWindow::drawPropertyInfoOverlay() {
   if (!propInfo.active)
     return;
@@ -812,7 +806,6 @@ void GameWindow::drawPropertyInfoOverlay() {
   drawPixelText(clbl, (int)(closeBtn.x + (closeBtn.width - clw) / 2),
                 (int)(closeBtn.y + (closeBtn.height - 10) / 2), 10, C_BTN_TEXT);
 
-  // Skip click-detection on the first frame to avoid same-frame glitch
   if (propInfo.justOpened) {
     propInfo.justOpened = false;
     return;
@@ -1194,7 +1187,7 @@ void GameWindow::drawPlayerList() {
       DrawRectangleLines(bx, by2, 74, 18, C_BORDER);
       drawPixelText("BANGKRUT", bx + 5, by2 + 5, 7, WHITE);
     }
-    // Shield aktif: indikator kecil di kanan nama
+    // Shield aktif
     if (p.shieldActive) {
       int sbx = sx + sw - 42, sby = ry + 22;
       DrawRectangle(sbx, sby, 28, 10, {38, 100, 200, 200});
@@ -1222,8 +1215,8 @@ void GameWindow::drawHandCards() {
     drawPixelText("(kosong)", sx + 14, y + 8, 8, C_TEXT_DIM);
     return;
   }
-  // Tombol PAKAI disabled jika sudah pakai kartu atau sudah lempar dadu atau
-  // giliran COM
+  // Tombol PAKAI disabled if udah pake kartu atau udah lempar dadu atau giliran
+  // COM
   bool cardUsable = !active.hasUsedCardThisTurn && !state.dice.hasRolled &&
                     !active.isCom && (state.currentPhase == "AWAITING_ACTION");
 
@@ -1331,7 +1324,7 @@ void GameWindow::drawSidebar() {
       drawPixelText("[BOT]", sx + sw - 52, by + 13, 8, C_WARN);
   }
   if (state.isComTurn && !curIsShield) {
-    // Tampilkan "Berpikir..." saat COM delay
+    // Output "Berpikir..." pas COM delay
     bool dot1 = ((int)(GetTime() * 3) % 3 >= 1);
     bool dot2 = ((int)(GetTime() * 3) % 3 >= 2);
     std::string think = "Berpikir" + std::string(dot1 ? "." : "") +
@@ -1437,12 +1430,12 @@ void GameWindow::drawCommandBar() {
        {255, 214, 214, 255}},
   };
 
-  // Tentukan tombol mana yang enabled berdasarkan phase
+  // Visual buat tombol yang enable/disable
   bool comTurn = state.isComTurn;
   bool awaiting = (state.currentPhase == "AWAITING_ACTION");
   bool postRoll = (state.currentPhase == "POST_ROLL");
   bool canAct = (awaiting || postRoll) && !comTurn;
-  // Map cmd → enabled
+  // Map cmd -> enabled
   auto isEnabled = [&](const std::string &cmd) -> bool {
     if (cmd == "LEMPAR_DADU")
       return awaiting && !state.dice.hasRolled && !comTurn;
@@ -1517,7 +1510,6 @@ void GameWindow::drawCommandBar() {
 }
 
 void GameWindow::drawPopup() {
-  // Popup mandatory tidak boleh ditutup ESC (DROP_CARD, WINNER, JAIL)
   bool mandatory =
       (popup.type == PopupType::JAIL || popup.type == PopupType::WINNER);
   if (!mandatory && IsKeyPressed(KEY_ESCAPE)) {
@@ -1576,7 +1568,7 @@ void GameWindow::drawPopup() {
     float listY = py + 78;
     float listH = visItems * itemH;
 
-    // Mouse wheel scroll
+    // wheel scroll
     float wheel = GetMouseWheelMove();
     popupScrollOffset -= (int)wheel;
     int maxScroll = std::max(0, (int)popup.options.size() - visItems);

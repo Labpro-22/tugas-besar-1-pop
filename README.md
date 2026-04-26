@@ -1,5 +1,5 @@
 # Nimonspoli - Tugas Besar IF2010 Pemrograman Berorientasi Objek
-
+![](Cover.jpg)
 ## 📖 Deskripsi Proyek
 **Nimonspoli** adalah permainan papan (*board game*) berbasis giliran yang mengadaptasi mekanisme klasik Monopoli dengan penambahan elemen strategis berupa **Skill Cards** dan fitur **Papan Dinamis**. Proyek ini dikembangkan menggunakan bahasa C++ dengan mengedepankan prinsip-prinsip Pemrograman Berorientasi Objek (OOP) dan arsitektur berlapis (*Layered Architecture*).
 

@@ -156,7 +156,7 @@ void GameEngine::saveGame(const std::string &filePath) {
         PropertyTile *prop = static_cast<PropertyTile *>(tile);
 
         int rentLevel = tile->getRentLevel();
-        int festMult = 1;
+        int festMult = prop->getFestivalMultiplier();
         bool monopolized = false;
 
         // Determine isMonopolized by checking if all tiles in the same color

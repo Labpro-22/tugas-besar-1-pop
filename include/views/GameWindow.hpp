@@ -22,6 +22,8 @@ struct PlayerInfo {
     std::string status;
     int jailTurnsLeft;
     bool shieldActive;
+    bool hasUsedCardThisTurn;
+    bool isCom;
     std::vector<CardInfo> handCards;
     Color color;
 };
@@ -65,6 +67,9 @@ struct GameState {
     DiceInfo dice;
     bool gameOver;
     std::string winnerName;
+    std::string currentPhase;  // "AWAITING_ACTION", "POST_ROLL", "EFFECT_PENDING", etc.
+    bool isComTurn;
+    bool canBuyCurrentTile = false;
 };
 
 // ---- Popup system ----
@@ -103,6 +108,7 @@ enum class AppScreen {
 struct MenuState {
     int numPlayers = 2;
     std::vector<std::string> playerNames = {"", "", "", ""};
+    std::vector<int> playerTypes = {0, 0, 0, 0}; // 0=manusia, 1=bot easy, 2=bot hard
     int activeField = 0;
 };
 

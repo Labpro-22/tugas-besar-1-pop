@@ -1,5 +1,6 @@
 // main.cpp — Controller: menghubungkan GameEngine <-> GameWindow (fully GUI)
 
+#include "../include/core/ComputerAI.hpp"
 #include "../include/core/ConfigLoader.hpp"
 #include "../include/core/Exceptions.hpp"
 #include "../include/core/GameEngine.hpp"
@@ -13,6 +14,8 @@
 #include "../include/views/GameWindow.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <map>
 #include <random>
 #include <sstream>
 #include <string>
@@ -57,6 +60,11 @@ static Pending pending = Pending::NONE;
 static int lastD1 = 0, lastD2 = 0;
 static bool turnJustStarted = true;
 static bool gameStarted = false;
+
+// ---- COM (Computer Player) state ----
+static std::map<int, ComputerAI::Difficulty> comPlayers; // player ID → difficulty
+static int comDelayCounter = 0;
+static const int COM_DELAY = 50; // ~0.83 detik pada 60fps sebelum COM bertindak
 
 // Pending context
 static PropertyTile *pendingProp = nullptr;
@@ -1046,6 +1054,183 @@ static bool checkGameOver(GameEngine &engine, GameWindow &window) {
 }
 
 // ============================================================
+// COM HELPERS
+// ============================================================
+
+// Cek apakah pemain dengan ID tertentu adalah COM
+static bool isComPlayer(int playerId) {
+    return comPlayers.count(playerId) > 0;
+}
+
+// Kembalikan difficulty COM (hanya valid jika isComPlayer == true)
+static ComputerAI::Difficulty getComDifficulty(int playerId) {
+    auto it = comPlayers.find(playerId);
+    if (it != comPlayers.end()) return it->second;
+    return ComputerAI::Difficulty::EASY;
+}
+
+// Inisialisasi comPlayers berdasarkan nama pemain:
+//   - Nama == "COM" (case-insensitive) → EASY
+//   - Nama == "GOD" (case-insensitive) → HARD
+static void setupComPlayers(const std::vector<Player *> &players) {
+    comPlayers.clear();
+    for (Player *p : players) {
+        std::string name = p->getUsername();
+        std::string upper = name;
+        for (char &c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+        if (upper == "COM") {
+            comPlayers[p->getId()] = ComputerAI::Difficulty::EASY;
+        } else if (upper == "GOD") {
+            comPlayers[p->getId()] = ComputerAI::Difficulty::HARD;
+        }
+    }
+}
+
+// ---- Extracted action helpers (digunakan oleh command callbacks DAN COM) ----
+
+static void performRollDice(GameEngine &engine, GameWindow &window,
+                             TransactionLogger &logger) {
+    if (!gameStarted || phase != Phase::AWAITING_ACTION) return;
+    if (engine.hasDiceRolled()) return;
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> dis(1, 6);
+    lastD1 = dis(gen);
+    lastD2 = dis(gen);
+
+    try {
+        engine.rollDice(lastD1, lastD2);
+    } catch (InvalidCommandException &) {
+        return;
+    }
+
+    logger.logEvent(engine.getCurrentRound(),
+                    engine.getCurrentPlayer()->getUsername(),
+                    LogActionType::ROLL,
+                    to_string(lastD1) + "+" + to_string(lastD2) + "=" +
+                        to_string(lastD1 + lastD2));
+
+    if (engine.getCurrentPlayer()->getStatus() == PlayerStatus::JAILED) {
+        phase = Phase::POST_ROLL;
+        return;
+    }
+
+    phase = Phase::ROLLED;
+    processTileEffect(engine, window, logger);
+}
+
+static void performEndTurn(GameEngine &engine, GameWindow &window,
+                           TransactionLogger & /*logger*/) {
+    if (!gameStarted) return;
+    if (phase != Phase::POST_ROLL && phase != Phase::AWAITING_ACTION) return;
+    if (!engine.hasDiceRolled()) return;
+
+    int prevIdx = engine.getCurrentTurnIdx();
+    try {
+        engine.endTurn();
+    } catch (InvalidCommandException &) {
+        return;
+    } catch (GameStateException &) {}
+
+    lastD1 = 0; lastD2 = 0;
+    if (checkGameOver(engine, window)) return;
+    newPlayerTurnStarted = (engine.getCurrentTurnIdx() != prevIdx);
+    turnJustStarted = true;
+    phase = Phase::AWAITING_ACTION;
+}
+
+// ---- Pemicu aksi COM ----
+
+static void triggerComAction(GameEngine &engine, GameWindow &window,
+                              TransactionLogger &logger) {
+    Player *p = engine.getCurrentPlayer();
+
+    // Lelang: cek apakah penawar saat ini adalah COM
+    if (phase == Phase::AUCTION_ACTIVE && auctionCtx.active &&
+        !auctionCtx.bidders.empty()) {
+        Player *bidder = auctionCtx.bidders[auctionCtx.currentIdx];
+        if (!isComPlayer(bidder->getId())) return;
+
+        ComputerAI::Difficulty diff = getComDifficulty(bidder->getId());
+        int bid1 = max(50, auctionCtx.highestBid + 1);
+        int bid2 = max(100, auctionCtx.highestBid + 51);
+        int choice = ComputerAI::decideAuction(bidder, auctionCtx.property,
+                                               auctionCtx.highestBid,
+                                               bid1, bid2, diff);
+        handlePopupResponse(choice, engine, window, logger);
+        return;
+    }
+
+    if (!p || !isComPlayer(p->getId())) return;
+    ComputerAI::Difficulty diff = getComDifficulty(p->getId());
+
+    switch (phase) {
+    case Phase::AWAITING_ACTION:
+        if (!engine.hasDiceRolled())
+            performRollDice(engine, window, logger);
+        break;
+
+    case Phase::EFFECT_PENDING:
+        switch (pending) {
+        case Pending::BUY_PROPERTY: {
+            int choice = ComputerAI::decideBuyProperty(p, pendingProp, diff);
+            handlePopupResponse(choice, engine, window, logger);
+            break;
+        }
+        case Pending::TAX_CHOICE: {
+            int choice = ComputerAI::decideTaxChoice(p, pendingTax, diff);
+            handlePopupResponse(choice, engine, window, logger);
+            break;
+        }
+        case Pending::FESTIVAL: {
+            int choice = ComputerAI::decideFestival(p, diff);
+            handlePopupResponse(choice, engine, window, logger);
+            break;
+        }
+        case Pending::JAIL_CHOICE: {
+            int fine = 50;
+            int choice = ComputerAI::decideJailChoice(p, fine, diff);
+            handlePopupResponse(choice, engine, window, logger);
+            break;
+        }
+        case Pending::DROP_CARD: {
+            int choice = ComputerAI::decideDropCard(p, pendingNewCard, diff);
+            handlePopupResponse(choice, engine, window, logger);
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+
+    case Phase::POST_ROLL:
+        // HARD mode: coba bangun rumah/hotel sebelum mengakhiri giliran
+        if (diff == ComputerAI::Difficulty::HARD) {
+            int maxBuilds = 15; // batas loop untuk mencegah loop tak terbatas
+            while (maxBuilds-- > 0) {
+                std::string target =
+                    ComputerAI::decideBuildTarget(p, engine.getBoard(), diff);
+                if (target.empty()) break;
+                try {
+                    engine.buyBuilding(target);
+                    logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                    LogActionType::BUILD, target + " [COM]");
+                } catch (...) {
+                    break;
+                }
+            }
+        }
+        performEndTurn(engine, window, logger);
+        break;
+
+    default:
+        break;
+    }
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 
@@ -1073,6 +1258,8 @@ int main() {
     window.onNewGame([&](int numPlayers, vector<string> names) {
         (void)numPlayers;
         engine.startNewGame(names);
+        setupComPlayers(engine.getAllPlayers()); // deteksi & daftarkan COM
+        comDelayCounter = 0;
         gameStarted = true;
         window.setScreen(AppScreen::PLAYING);
         phase = Phase::AWAITING_ACTION;
@@ -1085,6 +1272,8 @@ int main() {
         // Try to load; on fail, show error in text input
         try {
             engine.loadGame(filename);
+            setupComPlayers(engine.getAllPlayers()); // deteksi & daftarkan COM
+            comDelayCounter = 0;
             gameStarted = true;
             window.setScreen(AppScreen::PLAYING);
             phase = Phase::AWAITING_ACTION;
@@ -1111,57 +1300,20 @@ int main() {
 
     // ---- Register game action callbacks ----
 
-    // LEMPAR DADU
+    // LEMPAR DADU — sekarang mendelegasikan ke performRollDice
     window.onCommand("LEMPAR_DADU", [&]() {
-        if (!gameStarted || phase != Phase::AWAITING_ACTION) return;
-        if (engine.hasDiceRolled()) return;
-
-        random_device rd;
-        mt19937 gen(rd());
-        uniform_int_distribution<> dis(1, 6);
-        lastD1 = dis(gen);
-        lastD2 = dis(gen);
-
-        try {
-            engine.rollDice(lastD1, lastD2);
-        } catch (InvalidCommandException &) {
-            return;
-        }
-
-        logger.logEvent(engine.getCurrentRound(),
-                        engine.getCurrentPlayer()->getUsername(),
-                        LogActionType::ROLL,
-                        to_string(lastD1) + "+" + to_string(lastD2) + "=" +
-                            to_string(lastD1 + lastD2));
-
-        if (engine.getCurrentPlayer()->getStatus() == PlayerStatus::JAILED) {
-            phase = Phase::POST_ROLL;
-            return;
-        }
-
-        phase = Phase::ROLLED;
-        processTileEffect(engine, window, logger);
+        // Blokir jika pemain saat ini adalah COM (COM bertindak otomatis)
+        Player *cp = engine.getCurrentPlayer();
+        if (cp && isComPlayer(cp->getId())) return;
+        performRollDice(engine, window, logger);
     });
 
-    // AKHIRI GILIRAN
+    // AKHIRI GILIRAN — sekarang mendelegasikan ke performEndTurn
     window.onCommand("AKHIRI_GILIRAN", [&]() {
-        if (!gameStarted) return;
-        if (phase != Phase::POST_ROLL && phase != Phase::AWAITING_ACTION) return;
-        if (!engine.hasDiceRolled()) return;
-
-        int prevIdx = engine.getCurrentTurnIdx();
-        try {
-            engine.endTurn();
-        } catch (InvalidCommandException &) {
-            return;
-        } catch (GameStateException &) {}
-
-        lastD1 = 0; lastD2 = 0;
-        if (checkGameOver(engine, window)) return;
-        // Hanya draw kartu di awal giliran pemain baru (bukan bonus double)
-        newPlayerTurnStarted = (engine.getCurrentTurnIdx() != prevIdx);
-        turnJustStarted = true;
-        phase = Phase::AWAITING_ACTION;
+        // Blokir jika pemain saat ini adalah COM
+        Player *cp = engine.getCurrentPlayer();
+        if (cp && isComPlayer(cp->getId())) return;
+        performEndTurn(engine, window, logger);
     });
 
     // GADAI
@@ -1572,6 +1724,54 @@ int main() {
                     window.showPopup(ps);
                     pending = Pending::JAIL_CHOICE;
                     phase = Phase::EFFECT_PENDING;
+                }
+            }
+
+            // ---- COM Automation Tick ----
+            // Periksa apakah perlu memicu aksi COM pada iterasi ini
+            if (phase != Phase::GAME_OVER) {
+                bool needComAction = false;
+
+                if (phase == Phase::AUCTION_ACTIVE && auctionCtx.active &&
+                    !auctionCtx.bidders.empty()) {
+                    // Cek apakah penawar lelang saat ini adalah COM
+                    needComAction = isComPlayer(
+                        auctionCtx.bidders[auctionCtx.currentIdx]->getId());
+                } else if (engine.getCurrentPlayer()) {
+                    Player *cp = engine.getCurrentPlayer();
+                    if (isComPlayer(cp->getId())) {
+                        switch (phase) {
+                        case Phase::AWAITING_ACTION:
+                            needComAction = !engine.hasDiceRolled();
+                            break;
+                        case Phase::EFFECT_PENDING:
+                            // Hanya tangani pending state yang didukung COM
+                            needComAction =
+                                (pending == Pending::BUY_PROPERTY  ||
+                                 pending == Pending::TAX_CHOICE     ||
+                                 pending == Pending::FESTIVAL        ||
+                                 pending == Pending::JAIL_CHOICE     ||
+                                 pending == Pending::DROP_CARD);
+                            break;
+                        case Phase::POST_ROLL:
+                            needComAction = true;
+                            break;
+                        default:
+                            needComAction = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (needComAction) {
+                    if (comDelayCounter < COM_DELAY) {
+                        comDelayCounter++;
+                    } else {
+                        comDelayCounter = 0;
+                        triggerComAction(engine, window, logger);
+                    }
+                } else {
+                    comDelayCounter = 0;
                 }
             }
 

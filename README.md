@@ -42,7 +42,7 @@ Proyek menggunakan CMake sebagai sistem build lintas platform. Gunakan perintah 
     ```
 3.  **Menjalankan Program**:
     ```bash
-    ./build/Nimonspoli
+    ./build/game
     ```
 4.  **Membersihkan Hasil Build (Opsional)**:
     ```bash

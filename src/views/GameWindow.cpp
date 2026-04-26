@@ -139,8 +139,8 @@ struct AssetCache {
     loadPng("cmd_akhiri", "assets/AkhiriGiliran.png");
     loaded = true;
 
-    if (!musicLoaded && FileExists("assets/bgm.wav")) {
-      bgMusic = LoadMusicStream("assets/bgm.wav");
+    if (!musicLoaded && FileExists("assets/bgm.ogg")) {
+      bgMusic = LoadMusicStream("assets/bgm.ogg");
       bgMusic.looping = true;
       PlayMusicStream(bgMusic);
       musicLoaded = true;

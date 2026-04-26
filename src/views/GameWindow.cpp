@@ -1518,7 +1518,8 @@ void GameWindow::drawPopup() {
     return;
   }
 
-  bool useList = (int)popup.options.size() > 3;
+  bool useList = (int)popup.options.size() > 3 ||
+                 popup.type == PopupType::DROP_CARD;
 
   DrawRectangle(0, 0, screenW, screenH, {0, 0, 0, 150});
   float pw = useList ? 460.0f : 380.0f;

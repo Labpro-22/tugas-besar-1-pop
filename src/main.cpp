@@ -1124,6 +1124,7 @@ static void handlePopupResponse(int choice, GameEngine &engine,
       }
     }
     pending = Pending::NONE;
+    phase = Phase::AWAITING_ACTION; // reset dari EFFECT_PENDING
     break;
   }
   case Pending::AKTA_SELECT: {
@@ -2109,22 +2110,41 @@ int main() {
                                   newCard->getCardName());
             } else {
               pendingNewCard = newCard;
-              vector<string> opts;
-              for (const SkillCard *c : p->getHandCards())
-                opts.push_back(c->getCardName() + ": " +
-                               c->getCardDescription());
-              PopupState ps;
-              ps.type = PopupType::BUY_PROPERTY;
-              ps.title = "BUANG KARTU";
-              ps.message = "Tangan penuh! Pilih kartu untuk dibuang.\n"
-                           "Kartu baru: " +
-                           newCard->getCardName() + "\n" +
-                           newCard->getCardDescription();
-              ps.options = opts;
-              window.showPopup(ps);
-              pending = Pending::DROP_CARD;
-              phase = Phase::EFFECT_PENDING;
-              droppingCard = true;
+              if (isComPlayer(p->getId())) {
+                // COM: buang kartu tanpa popup
+                ComputerAI::Difficulty diff = getComDifficulty(p->getId());
+                int choice = ComputerAI::decideDropCard(p, pendingNewCard, diff);
+                if (choice >= 0 && choice < (int)p->getHandCards().size())
+                  p->removeCard(choice);
+                try {
+                  p->addCard(pendingNewCard);
+                  logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                  LogActionType::CARD,
+                                  "Dapat kartu: " + pendingNewCard->getCardName() +
+                                      " [COM]");
+                } catch (...) {
+                  engine.discardSkillCard(pendingNewCard);
+                }
+                pendingNewCard = nullptr;
+              } else {
+                // Manusia: tampilkan popup
+                vector<string> opts;
+                for (const SkillCard *c : p->getHandCards())
+                  opts.push_back(c->getCardName() + ": " +
+                                 c->getCardDescription());
+                PopupState ps;
+                ps.type = PopupType::DROP_CARD;
+                ps.title = "BUANG KARTU";
+                ps.message = "Tangan penuh! Pilih kartu untuk dibuang.\n"
+                             "Kartu baru: " +
+                             newCard->getCardName() + "\n" +
+                             newCard->getCardDescription();
+                ps.options = opts;
+                window.showPopup(ps);
+                pending = Pending::DROP_CARD;
+                phase = Phase::EFFECT_PENDING;
+                droppingCard = true;
+              }
             }
           }
         }
@@ -2156,7 +2176,33 @@ int main() {
               phase = Phase::POST_ROLL;
             }
             // Lanjut ke fase lempar dadu
+          } else if (isComPlayer(p->getId())) {
+            // COM: putuskan tanpa popup
+            ComputerAI::Difficulty diff = getComDifficulty(p->getId());
+            int choice = ComputerAI::decideJailChoice(p, fine, diff);
+            if (choice == 0) {
+              try {
+                *p -= fine;
+                p->setStatus(PlayerStatus::ACTIVE);
+                p->setJailTurnsLeft(0);
+                logger.logEvent(engine.getCurrentRound(), p->getUsername(),
+                                LogActionType::UNKNOWN,
+                                "Bayar denda penjara [COM] " + fmtMoney(fine));
+              } catch (NotEnoughMoneyException &) {
+                auto bkProps = vector<PropertyTile *>(
+                    p->getOwnedProperties().begin(), p->getOwnedProperties().end());
+                for (PropertyTile *op : bkProps) {
+                  op->setOwnerId(-1); op->setStatus(0);
+                  if (op->isStreet()) static_cast<StreetTile *>(op)->demolish();
+                  p->removeProperty(op);
+                }
+                p->declareBankruptcy();
+                phase = Phase::POST_ROLL;
+              }
+            }
+            // choice 1 = coba lempar double → ditangani oleh performRollDice
           } else {
+            // Manusia: tampilkan popup
             PopupState ps;
             ps.type = PopupType::JAIL;
             ps.title = "PENJARA";

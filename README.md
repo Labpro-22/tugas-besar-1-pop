@@ -44,9 +44,15 @@ Proyek menggunakan CMake sebagai sistem build lintas platform. Gunakan perintah 
     ```bash
     ./build/game
     ```
-4.  **Membersihkan Hasil Build (Opsional)**:
+4.  **Membersihkan Hasil Build (Opsional)**
+
+    Linux dan macOS:
     ```bash
     rm -rf build
+    ```
+    Windows:
+    ```bash
+    Remove-Item -Recurse -Force build
     ```
 
 ## 🎮 Fitur Utama
